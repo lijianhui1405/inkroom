@@ -36,7 +36,7 @@ node src/cli.mjs --help
   "mcpServers": {
     "inkroom-prompts": {
       "command": "npx",
-      "args": ["-y", "--package", "https://github.com/lijianhui1405/inkroom/releases/download/prompts-v0.1.0-preview.1/inkroom-prompts-0.1.0-preview.1.tgz", "inkroom-prompts"]
+      "args": ["-y", "--package", "https://github.com/lijianhui1405/inkroom/releases/download/prompts-v0.1.0-preview.2/inkroom-prompts-0.1.0-preview.2.tgz", "inkroom-prompts"]
     }
   }
 }
@@ -45,6 +45,17 @@ node src/cli.mjs --help
 包通过 GitHub Release 分发，未声明已发布 npm。源码模式可将命令改为 `node`，参数填写 `prompts/src/cli.mjs` 的绝对路径。其他客户端按各自配置格式填写相同命令和参数，不添加鉴权字段。
 
 需要本地 HTTP 时运行 `node src/cli.mjs --http 8788`，连接 `http://127.0.0.1:8788/mcp`，无需 Header。预览版没有宣布已上线的官方公网 Remote MCP 地址。
+
+### 可选测试服务地址
+
+普通用户无需配置环境变量，默认仍使用 `https://inkroom.ai`。`0.1.0-preview.2` 预览版新增可选的 `INKROOM_PROMPTS_ORIGIN`，供运营指定测试环境（例如 `https://inkroom.top`）时使用。STDIO、本地 HTTP 和独立 Skill 使用同一设置；它不改变本地 HTTP 监听地址，也不增加任何鉴权要求。
+
+```sh
+INKROOM_PROMPTS_ORIGIN=https://inkroom.top node src/cli.mjs --http 8788
+INKROOM_PROMPTS_ORIGIN=https://inkroom.top node skills/inkroom-prompts/scripts/prompts.mjs search "咖啡馆 海报"
+```
+
+STDIO 配置见 [`examples/mcp-test.json`](examples/mcp-test.json)：将绝对路径替换为本次源码安装中的 CLI 路径，在客户端的 `env` 中填写测试地址。不设置该变量即恢复默认服务。仅接受完整 HTTPS origin；只有本机回环测试允许 HTTP。不接受账号密码、路径、查询参数或片段。切换地址不代表目标环境已完成验收。
 
 ## Skill 安装
 
@@ -61,10 +72,10 @@ Skill 优先调用 MCP；未安装 MCP 时使用自带 Node.js 脚本，不额�
 
 示例图走 `static.inkroom.ai`。MCP 返回标准媒体资源链接，客户端支持时可显示；返回链接不代表已经展示或保存。
 
-服务端限制：每 IP 每分钟共 30 次，平台每分钟共 600 次；优化每 IP 每分钟 3 次、每天 10 次，平台每分钟最多 30 次、每天最多 500 次，另受管理员明确设置的预算限制。按北京时间 00:00 重置每日窗口；IPv6 按 /64 共用额度，云端客户端共用出口 IP 时可能共用额度，不宣称这是准确的设备限额。
+服务端限制：每 IP 每分钟共 30 次，平台每分钟共 600 次；优化每 IP 每分钟 3 次、每天 10 次，平台每分钟最多 30 次、每天最多 500 次。这些是跨实例共享的调用次数限制，不是金额预算。按北京时间 00:00 重置每日窗口；IPv6 按 /64 共用额度，云端客户端共用出口 IP 时可能共用额度，不宣称这是准确的设备限额。
 
 达到额度返回 429 和 `Retry-After`。网络/检索错误不会冒充“没有匹配”自动调用 AI；优化不自动重试，不静默换模型，不生成或扣费生成图片。
 
-管理员必须先配置平台预算才能启用 AI 优化。用户始终无需 Key。详见[英文安装与验证说明](README.md)、[市场材料](MARKETPLACE.md)和[后端交接](backend/README.md)。
+AI 优化属于平台内部调用，使用管理员选择的内部文本模型（默认 `gpt-6.1-sol`）和已有启用渠道，不要求配置对用户的模型售价。失败或结果未知的尝试仍计入调用次数，跨实例和重启不会重置。免费指不扣用户积分或余额，不代表供应商免费；已有内部用量记录只记供应商实际返回的 Token 用量，未返回时标记未知，不估算、不当作零成本。用户始终无需 Key。详见[英文安装与验证说明](README.md)、[市场材料](MARKETPLACE.md)和[后端交接](backend/README.md)。
 
 两个仓库的顶层 `skills/inkroom-prompts` 也提供完全相同的 Skill，便于市场扫描与安装。

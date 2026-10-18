@@ -1,0 +1,82 @@
+package prompt
+
+import (
+	"reflect"
+	"testing"
+	"time"
+
+	"cloud-canvas/internal/domain/prompt/moderation"
+	persistence "cloud-canvas/internal/infrastructure/persistence/prompt"
+)
+
+func TestPublicPromptsReadOnlyPreservesSourcesAndPublicVisibility(t *testing.T) {
+	service, db := newModerationTestService(t)
+	sources := []persistence.PromptSource{
+		{ID: "public", Scope: "system", Name: "Landscapes", Enabled: true, Published: true, Status: "ready"},
+		{ID: "unpublished", Scope: "system", Name: "Unpublished", Enabled: true},
+		{ID: "archived", Scope: "system", Name: "Archived", Enabled: true, Published: true, Archived: true},
+		{ID: "gpt-image-2-prompts", Scope: "system", Name: "Disabled builtin", Enabled: false, Published: true, Remote: true, Format: "builtin"},
+		{ID: "blocked-source", Scope: "system", Name: "pornography", Enabled: true, Published: true},
+	}
+	if err := db.Create(&sources).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range []string{"public", "personal", "unpublished", "archived", "gpt-image-2-prompts", "blocked-source"} {
+		item := persistence.Prompt{ID: source + "-item", Category: source, Title: "coffee poster", Prompt: "coffee poster with original text", Enabled: true, Recommended: true, CoverStorageKey: "fixture.webp", CoverLocalizationStatus: "ready"}
+		if err := db.Create(&item).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, item := range []persistence.Prompt{
+		{ID: "disabled-item", Category: "public", Enabled: false, Recommended: true},
+		{ID: "deleted-item", Category: "public", Enabled: true, Recommended: true, Deleted: true},
+		{ID: "pending-cover", Category: "public", Enabled: true, Recommended: true, CoverLocalizationStatus: "pending"},
+		{ID: "pending-review", Category: "public", Enabled: true, Recommended: true, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano), ModerationStatus: moderation.StatusPending},
+	} {
+		item.Title, item.Prompt = "coffee poster", "coffee poster"
+		if err := db.Create(&item).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	var before []persistence.PromptSource
+	if err := db.Order("id").Find(&before).Error; err != nil {
+		t.Fatal(err)
+	}
+	// A genuine SELECT-only database session catches hidden initialization or
+	// source-state writes, rather than checking only the returned item DTOs.
+	if err := db.Exec("PRAGMA query_only = ON").Error; err != nil {
+		t.Fatal(err)
+	}
+	page, err := service.ListPublicPromptsReadOnly(ListQuery{Scope: "mine", FavoriteUserID: "owner", Keywords: []string{"coffee"}, ItemsOnly: true, Page: 1, PageSize: 15})
+	if err != nil || page.Total != 1 || len(page.Items) != 1 || page.Items[0].ID != "public-item" {
+		t.Fatalf("public-only boundary changed: %#v %v", page, err)
+	}
+	for _, category := range []string{"personal", "unpublished", "gpt-image-2-prompts"} {
+		page, err := service.ListPublicPromptsReadOnly(ListQuery{Category: category, Page: 1, PageSize: 15, ItemsOnly: true})
+		if err != nil || len(page.Items) != 0 || page.Total != 0 {
+			t.Fatalf("caller category escaped public sources: %q %#v %v", category, page, err)
+		}
+	}
+	var after []persistence.PromptSource
+	if err := db.Order("id").Find(&after).Error; err != nil || !reflect.DeepEqual(before, after) {
+		t.Fatalf("source initialization or state mutation: before=%#v after=%#v err=%v", before, after, err)
+	}
+}
+
+func TestPublicPromptsReadOnlyWithNoPublicSourceNeverFallsBackToPrivateItems(t *testing.T) {
+	service, db := newModerationTestService(t)
+	if err := db.Create(&persistence.Prompt{ID: "private-only", Category: "personal", Title: "coffee", Prompt: "private coffee", Enabled: true, Recommended: true, CoverStorageKey: "fixture.webp", CoverLocalizationStatus: "ready"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("PRAGMA query_only = ON").Error; err != nil {
+		t.Fatal(err)
+	}
+	page, err := service.ListPublicPromptsReadOnly(ListQuery{Page: 1, PageSize: 15, ItemsOnly: true})
+	if err != nil || page.Total != 0 || len(page.Items) != 0 {
+		t.Fatalf("empty public sources leaked private records: %#v %v", page, err)
+	}
+	var count int64
+	if err := db.Model(&persistence.PromptSource{}).Count(&count).Error; err != nil || count != 1 {
+		t.Fatalf("initialized missing builtin sources: count=%d err=%v", count, err)
+	}
+}

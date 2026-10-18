@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"net/netip"
-	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -22,33 +21,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// PublicPromptPlan contains a server-chosen text-only call. The reservation is
-// a conservative platform quota, never a deduction from a user's wallet.
+// PublicPromptPlan contains one server-chosen text-only internal call. Only
+// shared call counters are reserved; no pricing or user-wallet action is used.
 type PublicPromptPlan struct {
-	Model          string
-	ReservedMillis int64
-	Run            func(context.Context) (string, error)
+	Model string
+	Run   func(context.Context) (string, error)
 }
 type PublicPromptPlanner func(string) (PublicPromptPlan, error)
 type publicCatalog interface {
-	ListPublicPrompts(promptapp.ListQuery) (promptapp.PromptList, error)
+	ListPublicPromptsReadOnly(promptapp.ListQuery) (promptapp.PromptList, error)
 }
 
 type publicAssistant struct {
-	catalog     publicCatalog
-	guard       authguard.Store
-	plan        PublicPromptPlanner
-	dailyBudget int64
+	catalog publicCatalog
+	guard   authguard.Store
+	plan    PublicPromptPlanner
 }
 
 func (h *Handler) WithPublicAssistant(guard authguard.Store, planner PublicPromptPlanner) *Handler {
-	// Explicit operator budget is required before the new anonymous feature can
-	// spend platform money. Invalid/absent settings fail closed for optimization.
-	budget, _ := strconv.ParseInt(os.Getenv("INKROOM_PROMPTS_DAILY_BUDGET_MILLIS"), 10, 64)
-	if budget < 0 || budget > 100_000_000 {
-		budget = 0
-	}
-	h.publicAssistant = &publicAssistant{guard: guard, plan: planner, dailyBudget: budget}
+	h.publicAssistant = &publicAssistant{guard: guard, plan: planner}
 	if h.prompts != nil {
 		h.publicAssistant.catalog = h.prompts
 	}
@@ -84,8 +75,8 @@ func publicPromptIdentity(ip string) string {
 }
 
 // reserve uses DB time and row locks shared across replicas. Unknown upstream
-// outcomes retain their reservation: retrying or restarting cannot reset spend.
-func (a *publicAssistant) reserve(ctx context.Context, ip string, optimize bool, amount int64) error {
+// outcomes retain their call count: retrying or restarting cannot reset usage.
+func (a *publicAssistant) reserve(ctx context.Context, ip string, optimize bool) error {
 	if a == nil || a.guard == nil {
 		return errors.New("public prompt guard unavailable")
 	}
@@ -95,11 +86,10 @@ func (a *publicAssistant) reserve(ctx context.Context, ip string, optimize bool,
 	globalOptimizeMinute := authguard.Key("public-prompts-global-optimize-minute-v1", "global")
 	optimizeMinute := authguard.Key("public-prompts-optimize-minute-v1", identity)
 	daily := authguard.Key("public-prompts-optimize-day-v1", identity)
-	budget := authguard.Key("public-prompts-budget-v1", "global")
 	calls := authguard.Key("public-prompts-calls-v1", "global")
 	keys := []string{minute, globalMinute}
 	if optimize {
-		keys = append(keys, globalOptimizeMinute, optimizeMinute, daily, budget, calls)
+		keys = append(keys, globalOptimizeMinute, optimizeMinute, daily, calls)
 	}
 	return a.guard.Transact(ctx, keys, func(states map[string]*authguard.State, now time.Time) error {
 		touch := func(key string, window, limit, n int64) error {
@@ -127,14 +117,11 @@ func (a *publicAssistant) reserve(ctx context.Context, ip string, optimize bool,
 			return err
 		}
 		if optimize {
-			if a.dailyBudget <= 0 || amount < 0 {
-				return errPublicPromptLimit
-			}
 			for _, r := range []struct {
 				key              string
 				window, limit, n int64
 			}{
-				{globalOptimizeMinute, 60, 30, 1}, {optimizeMinute, 60, 3, 1}, {daily, 86400, 10, 1}, {calls, 86400, 500, 1}, {budget, 86400, a.dailyBudget, amount},
+				{globalOptimizeMinute, 60, 30, 1}, {optimizeMinute, 60, 3, 1}, {daily, 86400, 10, 1}, {calls, 86400, 500, 1},
 			} {
 				if err := touch(r.key, r.window, r.limit, r.n); err != nil {
 					return err
@@ -153,14 +140,14 @@ func (h *Handler) publicReady(c *gin.Context, optimize bool) *publicAssistant {
 	c.Header("Cache-Control", "no-store")
 	c.Header("Cloudflare-CDN-Cache-Control", "no-store")
 	a := h.publicAssistant
-	if a == nil || a.catalog == nil || a.guard == nil || (optimize && (a.dailyBudget <= 0 || a.plan == nil)) {
+	if a == nil || a.catalog == nil || a.guard == nil || (optimize && a.plan == nil) {
 		publicPromptError(c, 503, "unavailable", "提示词助手暂不可用；无需登录或填写 Key。")
 		return nil
 	}
 	return a
 }
-func reservePublicPrompt(c *gin.Context, a *publicAssistant, optimize bool, amount int64) bool {
-	if err := a.reserve(c.Request.Context(), c.ClientIP(), optimize, amount); err != nil {
+func reservePublicPrompt(c *gin.Context, a *publicAssistant, optimize bool) bool {
+	if err := a.reserve(c.Request.Context(), c.ClientIP(), optimize); err != nil {
 		if errors.Is(err, errPublicPromptLimit) {
 			retryAfter := 60
 			var limit *publicPromptLimitError
@@ -205,10 +192,10 @@ func (h *Handler) PublicPromptSearch(c *gin.Context) {
 		publicPromptError(c, 400, "invalid_input", "请用最多 3 组关键词检索。")
 		return
 	}
-	if !reservePublicPrompt(c, a, false, 0) {
+	if !reservePublicPrompt(c, a, false) {
 		return
 	}
-	result, err := a.catalog.ListPublicPrompts(promptapp.ListQuery{Keywords: terms, Page: 1, PageSize: 15, ItemsOnly: true})
+	result, err := a.catalog.ListPublicPromptsReadOnly(promptapp.ListQuery{Keywords: terms, Page: 1, PageSize: 15, ItemsOnly: true})
 	if err != nil {
 		publicPromptError(c, 503, "catalog_unavailable", "检索暂不可用；未调用 AI 优化。")
 		return
@@ -251,9 +238,9 @@ func (h *Handler) PublicPromptSearch(c *gin.Context) {
 		items = items[:limit]
 	}
 	optimizationAvailable := false
-	if a.plan != nil && a.dailyBudget > 0 {
+	if a.plan != nil {
 		preview, err := a.plan(query)
-		optimizationAvailable = err == nil && preview.Run != nil && preview.ReservedMillis >= 0 && preview.ReservedMillis <= a.dailyBudget
+		optimizationAvailable = err == nil && preview.Run != nil
 	}
 	c.JSON(200, gin.H{"kind": "library", "query": query, "items": items, "hasMore": more, "optimizationAvailable": optimizationAvailable})
 }
@@ -290,11 +277,11 @@ func (h *Handler) PublicPromptOptimize(c *gin.Context) {
 		return
 	}
 	plan, err := a.plan(input.Query)
-	if err != nil || plan.Run == nil || plan.ReservedMillis < 0 || plan.ReservedMillis > a.dailyBudget {
+	if err != nil || plan.Run == nil {
 		publicPromptError(c, 503, "optimizer_unavailable", "AI 优化暂不可用；无需配置 Key。")
 		return
 	}
-	if !reservePublicPrompt(c, a, true, plan.ReservedMillis) {
+	if !reservePublicPrompt(c, a, true) {
 		return
 	}
 	requestID := id.New()
@@ -306,7 +293,7 @@ func (h *Handler) PublicPromptOptimize(c *gin.Context) {
 		outcome = "failed"
 	}
 	// No query, raw provider response, credentials or signed links in the audit.
-	log.Printf("public_prompt_optimize request=%s model=%s reserved_millis=%d outcome=%s", requestID, plan.Model, plan.ReservedMillis, outcome)
+	log.Printf("public_prompt_optimize request=%s model=%s outcome=%s", requestID, plan.Model, outcome)
 	if outcome != "success" {
 		publicPromptError(c, 502, "optimizer_failed", "AI 优化未返回结果；请稍后再试。未生成图片。")
 		return

@@ -18,17 +18,19 @@
 
 **Skill entry:** `prompts/skills/inkroom-prompts/SKILL.md` in both public repositories. Import the whole folder, including `scripts/` and `LICENSE`.
 
-**Data and limits:** See `PRIVACY.md` and the README. Optimization uses an InkRoom-managed model and a capped platform budget, never an end-user key.
+**Data and limits:** See `PRIVACY.md` and the README. Optimization is an internal call using an InkRoom-managed text model (default `gpt-6.1-sol`), shared request-count limits and actual reported internal usage, never an end-user key. It does not require retail pricing or deduct user credits. This does not claim the supplier is free.
 
 ## Publication gate
 
 This is a **preview source release**, not a claim of acceptance by a marketplace. Before advertising a working hosted service:
 
-1. Deploy the new public endpoints through InkRoom's release task, with validated trusted proxy/IP handling, shared guard storage, an explicit configured text model and an approved platform budget.
+1. Deploy the new public endpoints through InkRoom's release task, with validated trusted proxy/IP handling, shared guard storage, a confirmed enabled internal text model/channel, shared request-count limits and the internal actual-usage ledger.
 2. In the test environment verify all search, no-match, optimization, paired image rendering, download/open links, errors, limits and cancellation paths. Check logs and data boundaries. Verify both the MCP archive and standalone Skill archive as fresh installs.
 3. Confirm the actual public endpoints and repeat live acceptance with small bounded model use. Do not substitute mock tests for live evidence.
 4. If a directory requires a public Remote MCP, first deploy and verify its real HTTPS URL. No placeholder remote URL or fake registry identity is included here.
 5. If a directory requires npm, publish an owned npm package first and test its exact version. The GitHub archive is not an npm publication.
 6. Preserve separate listings for `inkroom-prompts` and paid `inkroom` image generation. Record submitted version, artifact checksum, actual public listing URL and review result per market.
+
+`0.1.0-preview.2` is a release candidate until its exact archives have actually been published and verified; these materials do not announce it as already released.
 
 Reference standards: [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools), [MCP optional authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization), [Agent Skills](https://agentskills.io/specification).

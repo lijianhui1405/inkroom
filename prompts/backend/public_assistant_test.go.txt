@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	promptapp "cloud-canvas/internal/application/prompt"
 	entity "cloud-canvas/internal/domain/prompt/entity"
@@ -25,7 +26,7 @@ type publicTestCatalog struct {
 	calls int
 }
 
-func (p *publicTestCatalog) ListPublicPrompts(q promptapp.ListQuery) (promptapp.PromptList, error) {
+func (p *publicTestCatalog) ListPublicPromptsReadOnly(q promptapp.ListQuery) (promptapp.PromptList, error) {
 	p.calls++
 	if q.Scope != "" || q.FavoriteUserID != "" || q.PageSize > 15 {
 		panic("non-public query")
@@ -89,8 +90,8 @@ func TestPublicPromptCatalogFailureDoesNotRunOptimizer(t *testing.T) {
 }
 func TestPublicPromptOptimizationStrictInputNoImageAndNoWallet(t *testing.T) {
 	var calls int
-	a := &publicAssistant{catalog: &publicTestCatalog{}, guard: publicTestStore(t), dailyBudget: 100, plan: func(query string) (PublicPromptPlan, error) {
-		return PublicPromptPlan{Model: "text-model", ReservedMillis: 20, Run: func(context.Context) (string, error) { calls++; return "保留文字周末见", nil }}, nil
+	a := &publicAssistant{catalog: &publicTestCatalog{}, guard: publicTestStore(t), plan: func(query string) (PublicPromptPlan, error) {
+		return PublicPromptPlan{Model: "text-model", Run: func(context.Context) (string, error) { calls++; return "保留文字周末见", nil }}, nil
 	}}
 	h := &Handler{publicAssistant: a}
 	for _, body := range []string{`{"query":"coffee","model":"image-model"}`, `{"query":"coffee"} {}`, `{"query":""}`, `{"query":"` + strings.Repeat("a", 5000) + `"}`} {
@@ -103,49 +104,89 @@ func TestPublicPromptOptimizationStrictInputNoImageAndNoWallet(t *testing.T) {
 		t.Fatal(result.Code, result.Body.String(), calls)
 	}
 }
-func TestPublicPromptReservationSurvivesUnknownFailureAndNewHandler(t *testing.T) {
+func TestPublicPromptCallCountSurvivesUnknownFailureAndNewHandler(t *testing.T) {
 	store := publicTestStore(t)
 	count := 0
 	plan := func(string) (PublicPromptPlan, error) {
-		return PublicPromptPlan{Model: "model", ReservedMillis: 60, Run: func(context.Context) (string, error) { count++; return "", errors.New("unknown provider result") }}, nil
+		return PublicPromptPlan{Model: "model", Run: func(context.Context) (string, error) { count++; return "", errors.New("unknown provider result") }}, nil
 	}
-	a := &publicAssistant{catalog: &publicTestCatalog{}, guard: store, plan: plan, dailyBudget: 100}
-	if r := publicTestRequest(&Handler{publicAssistant: a}, "POST", "/api/prompts/assistant/optimize", `{"query":"coffee"}`); r.Code != 502 {
-		t.Fatal(r.Code)
+	for i := 0; i < 3; i++ {
+		a := &publicAssistant{catalog: &publicTestCatalog{}, guard: store, plan: plan}
+		if r := publicTestRequest(&Handler{publicAssistant: a}, "POST", "/api/prompts/assistant/optimize", `{"query":"coffee"}`); r.Code != 502 {
+			t.Fatal(r.Code)
+		}
 	}
-	b := &publicAssistant{catalog: &publicTestCatalog{}, guard: store, plan: plan, dailyBudget: 100}
+	b := &publicAssistant{catalog: &publicTestCatalog{}, guard: store, plan: plan}
 	r := publicTestRequest(&Handler{publicAssistant: b}, "POST", "/api/prompts/assistant/optimize", `{"query":"coffee"}`)
-	if r.Code != 429 || count != 1 || r.Header().Get("Retry-After") == "" {
+	if r.Code != 429 || count != 3 || r.Header().Get("Retry-After") == "" {
 		t.Fatal(r.Code, r.Body.String(), count)
 	}
 }
-func TestPublicPromptSharedBudgetIsAtomicAcrossReplicas(t *testing.T) {
+func TestPublicPromptSharedCallLimitIsAtomicAcrossReplicas(t *testing.T) {
 	store := publicTestStore(t)
 	var accepted atomic.Int32
 	var group sync.WaitGroup
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 40; i++ {
 		group.Add(1)
 		go func(i int) {
 			defer group.Done()
-			a := &publicAssistant{guard: store, dailyBudget: 100}
-			if a.reserve(context.Background(), "192.0.2."+strconv.Itoa(i+1), true, 30) == nil {
+			a := &publicAssistant{guard: store}
+			if a.reserve(context.Background(), "192.0.2."+strconv.Itoa(i+1), true) == nil {
 				accepted.Add(1)
 			}
 		}(i)
 	}
 	group.Wait()
-	if accepted.Load() != 3 {
-		t.Fatal("budget admits", accepted.Load())
+	if accepted.Load() != 30 {
+		t.Fatal("global minute call limit admitted", accepted.Load())
 	}
 }
-func TestPublicPromptRequiresSharedGuardAndExplicitBudget(t *testing.T) {
+func TestPublicPromptRequiresSharedGuardAndConfiguredPlanner(t *testing.T) {
 	h := New(nil)
 	if r := publicTestRequest(h, "GET", "/api/prompts/assistant/search?query=coffee", ""); r.Code != 503 {
 		t.Fatal(r.Code)
 	}
-	a := &publicAssistant{catalog: &publicTestCatalog{}, guard: publicTestStore(t), plan: func(string) (PublicPromptPlan, error) { t.Fatal("must not plan"); return PublicPromptPlan{}, nil }}
+	a := &publicAssistant{catalog: &publicTestCatalog{}, guard: publicTestStore(t)}
 	if r := publicTestRequest(&Handler{publicAssistant: a}, "POST", "/api/prompts/assistant/optimize", `{"query":"coffee"}`); r.Code != 503 {
 		t.Fatal(r.Code)
+	}
+}
+
+type publicTestClockStore struct {
+	authguard.Store
+	now time.Time
+}
+
+func (s *publicTestClockStore) Transact(ctx context.Context, keys []string, fn func(map[string]*authguard.State, time.Time) error) error {
+	return s.Store.Transact(ctx, keys, func(states map[string]*authguard.State, _ time.Time) error { return fn(states, s.now) })
+}
+
+func TestPublicPromptDailyCallLimitsUseBeijingMidnightWithoutMoneyCounters(t *testing.T) {
+	for _, scenario := range []struct {
+		name, key string
+		limit     int
+	}{
+		{"per-ip", authguard.Key("public-prompts-optimize-day-v1", "192.0.2.1"), 10},
+		{"global", authguard.Key("public-prompts-calls-v1", "global"), 500},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			clock := &publicTestClockStore{Store: publicTestStore(t), now: time.Date(2026, 10, 18, 15, 59, 50, 0, time.UTC)}
+			bucket := (clock.now.Unix()+8*3600)/86400*86400 - 8*3600
+			if err := clock.Transact(context.Background(), []string{scenario.key}, func(states map[string]*authguard.State, _ time.Time) error {
+				states[scenario.key].Count, states[scenario.key].StartedAt = scenario.limit, bucket
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			a := &publicAssistant{guard: clock}
+			if err := a.reserve(context.Background(), "192.0.2.1", true); !errors.Is(err, errPublicPromptLimit) {
+				t.Fatal("daily call cap ignored", err)
+			}
+			clock.now = clock.now.Add(20 * time.Second)
+			if err := a.reserve(context.Background(), "192.0.2.1", true); err != nil {
+				t.Fatal("Beijing midnight did not reset call cap", err)
+			}
+		})
 	}
 }
 func TestPublicPromptIPv6IdentityAndImageBoundary(t *testing.T) {

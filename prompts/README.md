@@ -35,7 +35,7 @@ After downloading the GitHub preview package, use this portable STDIO configurat
   "mcpServers": {
     "inkroom-prompts": {
       "command": "npx",
-      "args": ["-y", "--package", "https://github.com/lijianhui1405/inkroom/releases/download/prompts-v0.1.0-preview.1/inkroom-prompts-0.1.0-preview.1.tgz", "inkroom-prompts"]
+      "args": ["-y", "--package", "https://github.com/lijianhui1405/inkroom/releases/download/prompts-v0.1.0-preview.2/inkroom-prompts-0.1.0-preview.2.tgz", "inkroom-prompts"]
     }
   }
 }
@@ -50,6 +50,17 @@ node src/cli.mjs --http 8788
 ```
 
 Connect to `http://127.0.0.1:8788/mcp` without headers. The listener binds only to loopback. No official public Remote MCP URL is announced in this preview. Operators deploying behind TLS must validate the public Host/Origin, set trusted proxies correctly, enforce ingress limits and complete live acceptance first.
+
+### Optional test-service address
+
+Normal installations need no environment variables and continue to use `https://inkroom.ai`. The `0.1.0-preview.2` preview adds `INKROOM_PROMPTS_ORIGIN` for an operator-directed test, for example `https://inkroom.top`. It applies equally to STDIO, local HTTP and the standalone Skill. It does not change the local HTTP listener address or add authentication.
+
+```sh
+INKROOM_PROMPTS_ORIGIN=https://inkroom.top node src/cli.mjs --http 8788
+INKROOM_PROMPTS_ORIGIN=https://inkroom.top node skills/inkroom-prompts/scripts/prompts.mjs search "café poster"
+```
+
+For STDIO, see [`examples/mcp-test.json`](examples/mcp-test.json): replace its absolute CLI path with your source installation path and set the `env` entry in the client. Omit the variable to return to the default service. Only a complete HTTPS origin is accepted; HTTP is allowed only for loopback testing. Credentials, paths, queries and fragments are rejected. A different service address does not imply that its hosted endpoints have passed acceptance.
 
 ## Install the Skill
 
@@ -78,10 +89,11 @@ Search first, then optimize on a **successful empty result**, or optimize direct
 The implemented server policy is shared across replicas and restarts:
 
 - 30 total operations per IP per minute; global ingress 600 per minute.
-- Optimization: 3 per IP per minute, 10 per IP per day, 30 globally per minute and 500 per day, plus an operator-set daily platform budget.
+- Optimization: 3 per IP per minute, 10 per IP per day, 30 globally per minute and 500 per day. These are shared request-count limits, not a monetary budget.
 - Daily windows reset at **00:00 Beijing time (UTC+8)**. IPv6 addresses share a /64 quota. Shared VPN/cloud egress may share an IP allowance; this is not a guaranteed per-device entitlement.
 - HTTP 429 includes `Retry-After`. Wait rather than changing identity or splitting work.
-- The operator must explicitly enable the text-model budget. A failed or unknown provider outcome retains its conservative budget reservation; users are never charged. No uncapped free proxy is exposed.
+- Optimization is an internal platform call, using an operator-selected text model (default `gpt-6.1-sol`) on an existing enabled channel. Retail pricing is not required. Failed or unknown attempts still count toward the request limits, including across replicas and restarts.
+- Free means no deduction from the user's credits or balance; it does not mean the model supplier charges nothing. The existing internal-use ledger records actual reported token usage. Missing supplier usage remains unknown rather than being estimated or presented as zero cost.
 
 ## Develop and verify
 

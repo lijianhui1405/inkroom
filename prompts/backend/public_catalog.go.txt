@@ -1,0 +1,23 @@
+package prompt
+
+import "cloud-canvas/internal/domain/prompt/repository"
+
+// ListPublicPromptsReadOnly is the anonymous assistant's catalog boundary.
+// Unlike the legacy website path it never initializes, republishes or enables
+// sources. Missing sources remain missing; all existing public item filters
+// still apply, including moderation, publication and ready cover storage.
+func (s *Service) ListPublicPromptsReadOnly(q ListQuery) (PromptList, error) {
+	q.UsableOnly = true
+	q.FavoriteUserID = ""
+	q.Scope = ""
+	sources, err := s.promptDomain.ListPromptSources(repository.PromptSourceQuery{Scope: "system", PublishedOnly: true, SkipStatistics: true})
+	if err != nil {
+		return PromptList{}, err
+	}
+	// A non-nil empty list means no public sources, not unrestricted categories.
+	categories := make([]string, 0, len(sources))
+	for _, source := range visiblePromptSourceLabels(sources) {
+		categories = append(categories, source.ID)
+	}
+	return s.listPromptsWithCategories(q, categories, categories, true, false, true, true)
+}

@@ -6,7 +6,7 @@ if (!['search','optimize'].includes(action) || !query || rest.length) {
   process.exitCode = 2;
 } else {
   try {
-    const client = new PromptClient();
+    const client = new PromptClient({origin:process.env.INKROOM_PROMPTS_ORIGIN});
     console.log(JSON.stringify(await client[action](query)));
   } catch (error) {
     console.log(JSON.stringify({error:{code:error.code || 'unexpected_error',message:error.code ? error.message : 'Prompt operation failed.',retryAfter:error.retryAfter ?? null}}));

@@ -9,19 +9,22 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	settingapp "cloud-canvas/internal/application/setting"
+	apikeyentity "cloud-canvas/internal/domain/apikey/entity"
+	apikeyrepo "cloud-canvas/internal/domain/apikey/repository"
 	entity "cloud-canvas/internal/domain/setting/entity"
 )
 
 func publicPromptTestHandler(t *testing.T, url string) *Handler {
 	t.Helper()
 	t.Setenv("INKROOM_PROMPTS_TEXT_MODEL", "gpt-5.4")
-	channel := entity.ModelChannel{ID: "public-prompts-test", BaseURL: url, APIKey: "test-only-key", Enabled: true, Weight: 1, Models: []string{"gpt-5.4"}, Capabilities: entity.ModelCapabilities{Responses: true}, ModelCosts: []entity.ModelCost{{Model: "gpt-5.4", Text: true, TextInputCreditMillisPerMillion: 1_000_000, TextOutputCreditMillisPerMillion: 1_000_000}}}
+	channel := entity.ModelChannel{ID: "public-prompts-test", BaseURL: url, APIKey: "test-only-key", Enabled: true, Weight: 1, Models: []string{"gpt-5.4"}, Capabilities: entity.ModelCapabilities{Responses: true}, ModelCosts: []entity.ModelCost{{Model: "gpt-5.4", Text: true, UserDisabled: true}}}
 	settings := settingapp.NewService(guestImageSettingDomain{settings: entity.Settings{Private: entity.PrivateSetting{Channels: []entity.ModelChannel{channel}}}}, nil)
 	return &Handler{settings: settings}
 }
-func TestPublicPromptPlanUsesFixedTextPayloadAndPricedUpperBound(t *testing.T) {
+func TestPublicPromptPlanUsesFixedTextPayloadWithoutPricingOrMoneyServices(t *testing.T) {
 	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -42,15 +45,104 @@ func TestPublicPromptPlanUsesFixedTextPayloadAndPricedUpperBound(t *testing.T) {
 	}))
 	defer upstream.Close()
 	plan, err := publicPromptTestHandler(t, upstream.URL).PreparePublicPrompt("保留文字周末见")
-	if err != nil || plan.ReservedMillis < 1500 {
-		t.Fatal("missing priced reservation", plan.ReservedMillis, err)
+	if err != nil || plan.Model != "gpt-5.4" || plan.Run == nil {
+		t.Fatal("unpriced internal model unavailable", plan.Model, err)
 	}
 	if calls.Load() != 0 {
-		t.Fatal("planning called provider before reservation")
+		t.Fatal("planning called provider before admission")
 	}
 	text, err := plan.Run(context.Background())
 	if err != nil || !strings.Contains(text, "周末见") || calls.Load() != 1 {
 		t.Fatal(text, err, calls.Load())
+	}
+}
+
+func TestPublicPromptDefaultIsConfiguredUnpricedGpt61Sol(t *testing.T) {
+	t.Setenv("INKROOM_PROMPTS_TEXT_MODEL", "")
+	channel := entity.ModelChannel{ID: "internal", BaseURL: "https://unused.example", APIKey: "fixture", Enabled: true, Weight: 1, Models: []string{"gpt-6.1-sol", "gpt-5.4"}, Capabilities: entity.ModelCapabilities{Responses: true}, ModelCosts: []entity.ModelCost{{Model: "gpt-6.1-sol", Text: true, UserDisabled: true}, {Model: "gpt-5.4", Text: true}}}
+	settings := settingapp.NewService(guestImageSettingDomain{settings: entity.Settings{Private: entity.PrivateSetting{Channels: []entity.ModelChannel{channel}}}}, nil)
+	plan, err := (&Handler{settings: settings}).PreparePublicPrompt("poster")
+	if err != nil || plan.Model != "gpt-6.1-sol" || plan.Run == nil {
+		t.Fatal("default did not select internal gpt-6.1-sol", plan.Model, err)
+	}
+}
+
+func TestPublicPromptLowReasoningIsBoundToKnownDefaultSourceAndDeclaredSupport(t *testing.T) {
+	for _, scenario := range []struct {
+		name, model, protocol string
+		efforts               []string
+		wantLow               bool
+	}{
+		{"default-low", "gpt-6.1-sol", "openai", []string{"low", "medium", "high", "xhigh"}, true},
+		{"default-unconfirmed", "gpt-6.1-sol", "openai", nil, false},
+		{"other-model-sharing-channel", "gpt-5.4", "openai", []string{"low"}, false},
+		{"gemini-protocol", "gpt-6.1-sol", "gemini", []string{"low"}, false},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			var calls atomic.Int32
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				body, _ := io.ReadAll(r.Body)
+				var value map[string]any
+				if err := json.Unmarshal(body, &value); err != nil {
+					t.Error(err)
+					return
+				}
+				if scenario.protocol == "gemini" {
+					if _, exists := value["reasoning"]; exists {
+						t.Error("OpenAI reasoning sent to Gemini")
+					}
+					config, _ := value["generationConfig"].(map[string]any)
+					if config["maxOutputTokens"] != float64(512) {
+						t.Error("Gemini output bound changed")
+					}
+					_, _ = io.WriteString(w, `{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"better prompt"}]}}]}`)
+					return
+				}
+				reasoning, exists := value["reasoning"]
+				if exists != scenario.wantLow || (exists && reasoning.(map[string]any)["effort"] != "low") {
+					t.Errorf("reasoning=%v wantLow=%t", reasoning, scenario.wantLow)
+				}
+				if value["max_output_tokens"] != float64(512) {
+					t.Error("output bound changed")
+				}
+				_, _ = io.WriteString(w, `{"status":"completed","output_text":"better prompt"}`)
+			}))
+			defer upstream.Close()
+			t.Setenv("INKROOM_PROMPTS_TEXT_MODEL", scenario.model)
+			channel := entity.ModelChannel{ID: "internal", BaseURL: upstream.URL, APIKey: "fixture", Protocol: scenario.protocol, Enabled: true, Weight: 1, Models: []string{scenario.model}, Capabilities: entity.ModelCapabilities{Responses: true, ReasoningEfforts: scenario.efforts}, ModelCosts: []entity.ModelCost{{Model: scenario.model, Text: true, UserDisabled: true}}}
+			settings := settingapp.NewService(guestImageSettingDomain{settings: entity.Settings{Private: entity.PrivateSetting{Channels: []entity.ModelChannel{channel}}}}, nil)
+			plan, err := (&Handler{settings: settings}).PreparePublicPrompt("poster")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = plan.Run(context.Background()); err != nil || calls.Load() != 1 {
+				t.Fatal("model request failed or retried", err, calls.Load())
+			}
+		})
+	}
+}
+
+func TestPublicPromptInternalSelectionIgnoresRetailPrices(t *testing.T) {
+	for _, scenario := range []struct {
+		name string
+		cost entity.ModelCost
+	}{
+		{"unpriced", entity.ModelCost{Model: "gpt-5.4", Text: true, UserDisabled: true}},
+		{"free", entity.ModelCost{Model: "gpt-5.4", Text: true, Free: true}},
+		{"discount", entity.ModelCost{Model: "gpt-5.4", Text: true, OfficialPricesUSD: map[string]float64{"text_input_1m": 0.01, "text_output_1m": 0.01}, DiscountPercent: 1}},
+		{"tiny-rounded-price", entity.ModelCost{Model: "gpt-5.4", Text: true, TextInputCreditMillisPerMillion: 1, TextOutputCreditMillisPerMillion: 1}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Setenv("INKROOM_PROMPTS_TEXT_MODEL", "gpt-5.4")
+			channel := entity.ModelChannel{ID: "public-prompts-test", BaseURL: "https://unused.example", APIKey: "fixture", Enabled: true, Weight: 1, Models: []string{"gpt-5.4"}, Capabilities: entity.ModelCapabilities{Responses: true}, ModelCosts: []entity.ModelCost{scenario.cost}}
+			settings := settingapp.NewService(guestImageSettingDomain{settings: entity.Settings{Private: entity.PrivateSetting{Channels: []entity.ModelChannel{channel}}}}, nil)
+			h := &Handler{settings: settings}
+			plan, err := h.PreparePublicPrompt("poster")
+			if err != nil || plan.Model != "gpt-5.4" || plan.Run == nil {
+				t.Fatal("retail pricing blocked internal model", plan.Model, err)
+			}
+		})
 	}
 }
 func TestPublicPromptNeverRetriesOrDeliversPartialOversizedOrErrorBody(t *testing.T) {
@@ -91,7 +183,7 @@ func TestPublicPromptCancellationAndRedirectDoNotSpendAgain(t *testing.T) {
 		t.Fatal("ignored cancellation", calls.Load(), err)
 	}
 }
-func TestPublicPromptNoModelNoPricingNoCall(t *testing.T) {
+func TestPublicPromptUnconfiguredOrDisabledModelsDoNotCallProvider(t *testing.T) {
 	if _, err := (&Handler{}).PreparePublicPrompt("poster"); err == nil {
 		t.Fatal("unconfigured call accepted")
 	}
@@ -99,5 +191,134 @@ func TestPublicPromptNoModelNoPricingNoCall(t *testing.T) {
 	t.Setenv("INKROOM_PROMPTS_TEXT_MODEL", "not-configured")
 	if _, err := h.PreparePublicPrompt("poster"); err == nil {
 		t.Fatal("arbitrary model accepted")
+	}
+	disabled := false
+	for _, channel := range []entity.ModelChannel{
+		{ID: "disabled-channel", Enabled: false, BaseURL: "https://unused.example", APIKey: "fixture", Weight: 1, Models: []string{"gpt-5.4"}, ModelCosts: []entity.ModelCost{{Model: "gpt-5.4", Text: true}}, Capabilities: entity.ModelCapabilities{Responses: true}},
+		{ID: "disabled-model", Enabled: true, BaseURL: "https://unused.example", APIKey: "fixture", Weight: 1, Models: []string{"gpt-5.4"}, ModelCosts: []entity.ModelCost{{Model: "gpt-5.4", Text: true, Enabled: &disabled}}, Capabilities: entity.ModelCapabilities{Responses: true}},
+		{ID: "missing-protocol", Enabled: true, BaseURL: "https://unused.example", APIKey: "fixture", Weight: 1, Models: []string{"gpt-5.4"}, ModelCosts: []entity.ModelCost{{Model: "gpt-5.4", Text: true}}},
+	} {
+		t.Run(channel.ID, func(t *testing.T) {
+			t.Setenv("INKROOM_PROMPTS_TEXT_MODEL", "gpt-5.4")
+			settings := settingapp.NewService(guestImageSettingDomain{settings: entity.Settings{Private: entity.PrivateSetting{Channels: []entity.ModelChannel{channel}}}}, nil)
+			if _, err := (&Handler{settings: settings}).PreparePublicPrompt("poster"); err == nil {
+				t.Fatal("unavailable internal model admitted")
+			}
+		})
+	}
+}
+
+func publicPromptInternalUsage(t *testing.T, repo apikeyrepo.Repository) apikeyentity.APIUsageLog {
+	t.Helper()
+	items, total, err := repo.ListAPIUsageLogs(apikeyrepo.UsageQuery{Source: "internal", Page: 1, PageSize: 10})
+	if err != nil || total != 1 || len(items) != 1 {
+		t.Fatalf("one attempt should create one internal record: %#v %d %v", items, total, err)
+	}
+	item := items[0]
+	if item.UserID != "" || item.APIKeyID != "" || item.ChargeMillis != 0 || item.Source != "internal" || item.Modality != "text" || item.Model != "gpt-5.4" || item.Path != "/internal/public-prompt-optimize" || item.Prompt != "" || item.ResponseHeaders != "" || item.DurationMillis < 0 {
+		t.Fatalf("internal attempt changed money or retained private content: %#v", item)
+	}
+	if _, count, err := repo.ListAPIUsageLogs(apikeyrepo.UsageQuery{UserID: "admin", Page: 1, PageSize: 10}); err != nil || count != 0 {
+		t.Fatalf("internal usage entered a user bill: count=%d err=%v", count, err)
+	}
+	return item
+}
+
+func TestPublicPromptInternalUsageKeepsActualTokensAndFailuresWithoutUserCharges(t *testing.T) {
+	for _, scenario := range []struct {
+		name                  string
+		status                int
+		body                  string
+		wantStatus            apikeyentity.UsageStatus
+		input, output, cached int64
+		reported              bool
+	}{
+		{"reported", 200, `{"status":"completed","output_text":"better prompt","usage":{"input_tokens":120,"input_tokens_details":{"cached_tokens":20},"output_tokens":30}}`, apikeyentity.UsageStatusSuccess, 100, 30, 20, true},
+		{"missing-usage", 200, `{"status":"completed","output_text":"better prompt"}`, apikeyentity.UsageStatusSuccess, 0, 0, 0, false},
+		{"http-failure", 502, `{"error":{"message":"private-provider-secret"}}`, apikeyentity.UsageStatusFailed, 0, 0, 0, false},
+		{"incomplete", 200, `{"status":"incomplete","output_text":"partial","usage":{"input_tokens":10,"output_tokens":2}}`, apikeyentity.UsageStatusFailed, 10, 2, 0, true},
+		{"unknown-connection", 0, "", apikeyentity.UsageStatusFailed, 0, 0, 0, false},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			var calls atomic.Int32
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				if scenario.status == 0 {
+					conn, _, err := w.(http.Hijacker).Hijack()
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					_ = conn.Close()
+					return
+				}
+				w.WriteHeader(scenario.status)
+				_, _ = io.WriteString(w, scenario.body)
+			}))
+			defer upstream.Close()
+			h := publicPromptTestHandler(t, upstream.URL)
+			repo := attachImageLogUsageRecorder(t, h)
+			plan, err := h.PreparePublicPrompt("private-user-idea")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = plan.Run(context.Background())
+			if (err == nil) != (scenario.wantStatus == apikeyentity.UsageStatusSuccess) || calls.Load() != 1 {
+				t.Fatal("unexpected result or retry", err, calls.Load())
+			}
+			item := publicPromptInternalUsage(t, repo)
+			if item.Status != scenario.wantStatus || item.HTTPStatus != scenario.status || item.InputTokens != scenario.input || item.OutputTokens != scenario.output || item.CachedTokens != scenario.cached {
+				t.Fatalf("wrong actual usage: %#v", item)
+			}
+			metadata, _ := json.Marshal(map[string]bool{"usage_reported": scenario.reported})
+			if item.RequestParameters != string(metadata) || strings.Contains(item.ErrorMessage, "private-provider-secret") || strings.Contains(item.ErrorMessage, "private-user-idea") {
+				t.Fatalf("estimated tokens or private audit content: %#v", item)
+			}
+		})
+	}
+}
+
+func TestPublicPromptInternalUsageKeepsCancellationWithoutRetry(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		_, _ = io.Copy(io.Discard, r.Body)
+		close(started)
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	defer upstream.Close()
+	defer close(release)
+	h := publicPromptTestHandler(t, upstream.URL)
+	repo := attachImageLogUsageRecorder(t, h)
+	plan, err := h.PreparePublicPrompt("poster")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := plan.Run(ctx); done <- err }()
+	select {
+	case <-started:
+		cancel()
+	case <-time.After(3 * time.Second):
+		t.Fatal("provider did not start")
+	}
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("cancelled result succeeded")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("request did not cancel")
+	}
+	item := publicPromptInternalUsage(t, repo)
+	if item.Status != apikeyentity.UsageStatusCancelled || item.RequestParameters != `{"usage_reported":false}` || item.InputTokens != 0 || item.OutputTokens != 0 || calls.Load() != 1 {
+		t.Fatalf("cancellation lost or retried: %#v calls=%d", item, calls.Load())
 	}
 }

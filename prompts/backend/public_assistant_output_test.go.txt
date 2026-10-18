@@ -1,0 +1,26 @@
+package prompts
+
+import (
+	"context"
+	"strings"
+	"testing"
+)
+
+func TestPublicPromptOptimizeRejectsTextOver16000BytesWithoutDeliveryOrRetry(t *testing.T) {
+	calls := 0
+	oversized := strings.Repeat("x", 16_001)
+	h := &Handler{publicAssistant: &publicAssistant{
+		catalog: &publicTestCatalog{},
+		guard:   publicTestStore(t),
+		plan: func(string) (PublicPromptPlan, error) {
+			return PublicPromptPlan{Model: "controlled-fixture", Run: func(context.Context) (string, error) {
+				calls++
+				return oversized, nil
+			}}, nil
+		},
+	}}
+	response := publicTestRequest(h, "POST", "/api/prompts/assistant/optimize", `{"query":"poster"}`)
+	if response.Code != 502 || calls != 1 || !strings.Contains(response.Body.String(), `"optimizer_failed"`) || strings.Contains(response.Body.String(), oversized[:128]) || strings.Contains(response.Body.String(), `"kind":"optimized"`) {
+		t.Fatalf("oversized model text was delivered or retried: status=%d calls=%d body=%s", response.Code, calls, response.Body.String())
+	}
+}
