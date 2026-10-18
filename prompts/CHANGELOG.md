@@ -1,5 +1,11 @@
 # Changes
 
+## 0.1.0-preview.3
+
+- Move the anonymous API default to `https://prompts.inkroom.ai`, with `https://prompts.inkroom.top` for operator-directed tests.
+- Preserve preview.2 public search, protocol validation, shared request counts and internal token usage without user charges or paid-service fallback.
+- Hosted isolation and new archives remain pending live release verification.
+
 ## 0.1.0-preview.2
 
 - Support the optional, strictly validated `INKROOM_PROMPTS_ORIGIN` test-service address in the STDIO CLI, local HTTP CLI and standalone Skill; the default remains `https://inkroom.ai`, without credentials.

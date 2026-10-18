@@ -36,7 +36,7 @@ node src/cli.mjs --help
   "mcpServers": {
     "inkroom-prompts": {
       "command": "npx",
-      "args": ["-y", "--package", "https://github.com/lijianhui1405/inkroom/releases/download/prompts-v0.1.0-preview.2/inkroom-prompts-0.1.0-preview.2.tgz", "inkroom-prompts"]
+      "args": ["-y", "--package", "https://github.com/InkRoom-AI/inkroom-client/releases/download/prompts-v0.1.0-preview.3/inkroom-prompts-0.1.0-preview.3.tgz", "inkroom-prompts"]
     }
   }
 }
@@ -48,11 +48,11 @@ node src/cli.mjs --help
 
 ### 可选测试服务地址
 
-普通用户无需配置环境变量，默认仍使用 `https://inkroom.ai`。`0.1.0-preview.2` 预览版新增可选的 `INKROOM_PROMPTS_ORIGIN`，供运营指定测试环境（例如 `https://inkroom.top`）时使用。STDIO、本地 HTTP 和独立 Skill 使用同一设置；它不改变本地 HTTP 监听地址，也不增加任何鉴权要求。
+普通用户无需配置环境变量，默认使用 `https://prompts.inkroom.ai`。`0.1.0-preview.3` 预览版支持可选的 `INKROOM_PROMPTS_ORIGIN`，供运营指定测试环境（例如 `https://prompts.inkroom.top`）时使用。STDIO、本地 HTTP 和独立 Skill 使用同一设置；它不改变本地 HTTP 监听地址，也不增加任何鉴权要求。
 
 ```sh
-INKROOM_PROMPTS_ORIGIN=https://inkroom.top node src/cli.mjs --http 8788
-INKROOM_PROMPTS_ORIGIN=https://inkroom.top node skills/inkroom-prompts/scripts/prompts.mjs search "咖啡馆 海报"
+INKROOM_PROMPTS_ORIGIN=https://prompts.inkroom.top node src/cli.mjs --http 8788
+INKROOM_PROMPTS_ORIGIN=https://prompts.inkroom.top node skills/inkroom-prompts/scripts/prompts.mjs search "咖啡馆 海报"
 ```
 
 STDIO 配置见 [`examples/mcp-test.json`](examples/mcp-test.json)：将绝对路径替换为本次源码安装中的 CLI 路径，在客户端的 `env` 中填写测试地址。不设置该变量即恢复默认服务。仅接受完整 HTTPS origin；只有本机回环测试允许 HTTP。不接受账号密码、路径、查询参数或片段。切换地址不代表目标环境已完成验收。
@@ -79,3 +79,7 @@ Skill 优先调用 MCP；未安装 MCP 时使用自带 Node.js 脚本，不额�
 AI 优化属于平台内部调用，使用管理员选择的内部文本模型（默认 `gpt-6.1-sol`）和已有启用渠道，不要求配置对用户的模型售价。失败或结果未知的尝试仍计入调用次数，跨实例和重启不会重置。免费指不扣用户积分或余额，不代表供应商免费；已有内部用量记录只记供应商实际返回的 Token 用量，未返回时标记未知，不估算、不当作零成本。用户始终无需 Key。详见[英文安装与验证说明](README.md)、[市场材料](MARKETPLACE.md)和[后端交接](backend/README.md)。
 
 两个仓库的顶层 `skills/inkroom-prompts` 也提供完全相同的 Skill，便于市场扫描与安装。
+
+## 服务边界
+
+免费 MCP 和 Skill 统一调用 **https://prompts.inkroom.ai** 的检索与文字优化接口，后端为独立的 `inkroom-prompt-assistant` 容器。故障时不会回退到收费生图接口。网页工具仍位于 `inkroom.ai`，示例图仍使用 `static.inkroom.ai`。这是目标发布域名，是否已可用仍以真实请求和发布验收为准。

@@ -35,7 +35,7 @@ After downloading the GitHub preview package, use this portable STDIO configurat
   "mcpServers": {
     "inkroom-prompts": {
       "command": "npx",
-      "args": ["-y", "--package", "https://github.com/lijianhui1405/inkroom/releases/download/prompts-v0.1.0-preview.2/inkroom-prompts-0.1.0-preview.2.tgz", "inkroom-prompts"]
+      "args": ["-y", "--package", "https://github.com/InkRoom-AI/inkroom-client/releases/download/prompts-v0.1.0-preview.3/inkroom-prompts-0.1.0-preview.3.tgz", "inkroom-prompts"]
     }
   }
 }
@@ -53,11 +53,11 @@ Connect to `http://127.0.0.1:8788/mcp` without headers. The listener binds only 
 
 ### Optional test-service address
 
-Normal installations need no environment variables and continue to use `https://inkroom.ai`. The `0.1.0-preview.2` preview adds `INKROOM_PROMPTS_ORIGIN` for an operator-directed test, for example `https://inkroom.top`. It applies equally to STDIO, local HTTP and the standalone Skill. It does not change the local HTTP listener address or add authentication.
+Normal installations need no environment variables and use `https://prompts.inkroom.ai`. The `0.1.0-preview.3` preview supports `INKROOM_PROMPTS_ORIGIN` for an operator-directed test, for example `https://prompts.inkroom.top`. It applies equally to STDIO, local HTTP and the standalone Skill. It does not change the local HTTP listener address or add authentication.
 
 ```sh
-INKROOM_PROMPTS_ORIGIN=https://inkroom.top node src/cli.mjs --http 8788
-INKROOM_PROMPTS_ORIGIN=https://inkroom.top node skills/inkroom-prompts/scripts/prompts.mjs search "café poster"
+INKROOM_PROMPTS_ORIGIN=https://prompts.inkroom.top node src/cli.mjs --http 8788
+INKROOM_PROMPTS_ORIGIN=https://prompts.inkroom.top node skills/inkroom-prompts/scripts/prompts.mjs search "café poster"
 ```
 
 For STDIO, see [`examples/mcp-test.json`](examples/mcp-test.json): replace its absolute CLI path with your source installation path and set the `env` entry in the client. Omit the variable to return to the default service. Only a complete HTTPS origin is accepted; HTTP is allowed only for loopback testing. Credentials, paths, queries and fragments are rejected. A different service address does not imply that its hosted endpoints have passed acceptance.
@@ -106,3 +106,7 @@ npm pack --dry-run
 Tests cover real SDK initialization and tool calls, STDIO, Streamable HTTP, errors, cancellation, no credential forwarding, image/source pairing and response limits. Backend integration and quota tests are described in [`backend/README.md`](backend/README.md). Mock-model tests do not prove hosted model availability.
 
 The same Skill is also mirrored at each repository's top-level `skills/inkroom-prompts` for directories that discover Skills there. Both copies must remain identical.
+
+## Service boundary
+
+The MCP and Skill both call **https://prompts.inkroom.ai** for free search and text optimization. The backend runs in its own `inkroom-prompt-assistant` container; it does not fall back to the paid image API. Website pages stay on `inkroom.ai`, and library examples stay on `static.inkroom.ai`. This domain is the release target; hosted availability still requires live acceptance.

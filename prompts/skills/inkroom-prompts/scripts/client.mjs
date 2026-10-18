@@ -4,7 +4,7 @@ export class PromptError extends Error {
     super(message); this.name = 'PromptError'; this.code = code; this.retryAfter = retryAfter;
   }
 }
-export function serviceOrigin(value = 'https://inkroom.ai') {
+export function serviceOrigin(value = 'https://prompts.inkroom.ai') {
   const url = new URL(value);
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
   if ((url.protocol !== 'https:' && !(local && url.protocol === 'http:')) || url.username || url.password || url.search || url.hash || url.pathname !== '/') {

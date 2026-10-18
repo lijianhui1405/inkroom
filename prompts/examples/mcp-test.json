@@ -4,7 +4,7 @@
       "command": "node",
       "args": ["/absolute/path/to/prompts/src/cli.mjs"],
       "env": {
-        "INKROOM_PROMPTS_ORIGIN": "https://inkroom.top"
+        "INKROOM_PROMPTS_ORIGIN": "https://prompts.inkroom.top"
       }
     }
   }

@@ -31,6 +31,6 @@ This is a **preview source release**, not a claim of acceptance by a marketplace
 5. If a directory requires npm, publish an owned npm package first and test its exact version. The GitHub archive is not an npm publication.
 6. Preserve separate listings for `inkroom-prompts` and paid `inkroom` image generation. Record submitted version, artifact checksum, actual public listing URL and review result per market.
 
-`0.1.0-preview.2` is a release candidate until its exact archives have actually been published and verified; these materials do not announce it as already released.
+`0.1.0-preview.3` is a release candidate until its exact archives have actually been published and verified; these materials do not announce it as already released.
 
 Reference standards: [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools), [MCP optional authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization), [Agent Skills](https://agentskills.io/specification).
