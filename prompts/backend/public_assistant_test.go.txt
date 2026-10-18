@@ -54,13 +54,36 @@ func publicTestRequest(h *Handler, method, path, body string) *httptest.Response
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	_ = router.SetTrustedProxies(nil)
-	h.RegisterPublicRoutes(router.Group("/api"))
+	router.GET("/api/prompts/assistant/search", h.PublicPromptSearch)
+	router.POST("/api/prompts/assistant/optimize", h.PublicPromptOptimize)
 	request := httptest.NewRequest(method, path, strings.NewReader(body))
 	request.RemoteAddr = "192.0.2.1:1234"
 	request.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, request)
 	return w
+}
+
+func TestOrdinaryPromptProcessDoesNotExposeFreeAssistant(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	h := &Handler{}
+	h.RegisterPublicRoutes(router.Group("/api"))
+	for _, path := range []string{"/api/prompts/assistant/search", "/api/prompts/assistant/optimize"} {
+		for _, method := range []string{"GET", "POST"} {
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest(method, path, nil))
+			if w.Code != 404 {
+				t.Errorf("free route leaked into ordinary process: %s %s: %d", method, path, w.Code)
+			}
+		}
+	}
+	for _, route := range router.Routes() {
+		if route.Path == "/api/prompts" && route.Method == "GET" {
+			return
+		}
+	}
+	t.Fatal("existing public library route was removed")
 }
 func TestPublicPromptSearchIsAnonymousAndReturnsOnlyPairedPublicData(t *testing.T) {
 	catalog := &publicTestCatalog{}

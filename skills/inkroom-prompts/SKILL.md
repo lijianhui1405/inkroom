@@ -8,11 +8,13 @@ license: MIT
 
 Requires internet access and either the InkRoom Prompts MCP tools or Node.js 20.3+ for the bundled scripts.
 
+The bundled client calls the dedicated free API at `https://prompts.inkroom.ai`; it never falls back to the paid image service. Examples use `static.inkroom.ai`.
+
 Find a usable image prompt from a few keywords. This is separate from InkRoom's paid image-generation Skill.
 
 ## Optional test environment
 
-Ordinary users do not configure an address: the default is `https://inkroom.ai`. Only when the operator explicitly asks to test another InkRoom environment, `0.1.0-preview.2` or later can use `INKROOM_PROMPTS_ORIGIN=https://inkroom.top` in the MCP process or bundled script environment. The same setting covers STDIO, local HTTP and standalone scripts, without a Key or Token. Do not change the address to work around a limit or service error. Only a complete HTTPS origin is allowed (HTTP only for loopback); credentials, paths, queries and fragments are rejected. Unset the variable to restore the default service. This option does not claim that a test environment or preview package is fully released.
+Ordinary users do not configure an address: the default is `https://prompts.inkroom.ai`. Only when the operator explicitly asks to test another InkRoom environment, `0.1.0-preview.3` or later can use `INKROOM_PROMPTS_ORIGIN=https://prompts.inkroom.top` in the MCP process or bundled script environment. The same setting covers STDIO, local HTTP and standalone scripts, without a Key or Token. Do not change the address to work around a limit or service error. Only a complete HTTPS origin is allowed (HTTP only for loopback); credentials, paths, queries and fragments are rejected. Unset the variable to restore the default service. This option does not claim that a test environment or preview package is fully released.
 
 ## Use
 

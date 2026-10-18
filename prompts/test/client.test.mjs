@@ -42,3 +42,14 @@ test('cancellation reaches network request and does not trigger another provider
  const client=new PromptClient({fetchImpl:async(_url,options)=>{calls++;options.signal.throwIfAborted();}});
  await assert.rejects(client.optimize('coffee',{signal:controller.signal}),{code:'timeout_or_cancelled'}); assert.equal(calls,1);
 });
+
+test('MCP and Skill default to the isolated free origin, never to paid APIs',async()=>{
+ assert.equal(serviceOrigin(), 'https://prompts.inkroom.ai');
+ const urls=[];
+ const client=new PromptClient({fetchImpl:async(url)=>{urls.push(url);throw new TypeError('offline');}});
+ await assert.rejects(client.search('coffee'));
+ await assert.rejects(client.optimize('coffee'));
+ assert.equal(urls.length,2);
+ assert.equal(new URL(urls[0]).origin,'https://prompts.inkroom.ai');
+ assert.equal(new URL(urls[1]).origin,'https://prompts.inkroom.ai');
+});

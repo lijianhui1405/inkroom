@@ -29,7 +29,7 @@ function environment(origin) {
   return {PATH:process.env.PATH || '', ...(origin === undefined ? {} : {INKROOM_PROMPTS_ORIGIN:origin})};
 }
 async function assertTools(client, origin) {
-  assert.equal(client.getServerVersion().version, '0.1.0-preview.2');
+  assert.equal(client.getServerVersion().version, '0.1.0-preview.3');
   const search = await client.callTool({name:'search_prompts', arguments:{query:'poster'}});
   assert.equal(search.isError, undefined);
   assert.equal(search.structuredContent.items[0].prompt, origin + '/api/prompts/assistant/search?query=poster&limit=3');
@@ -59,8 +59,8 @@ async function waitForListener(child) {
   });
 }
 
-for (const origin of [undefined, 'https://inkroom.top']) {
-  const selected = origin || 'https://inkroom.ai';
+for (const origin of [undefined, 'https://prompts.inkroom.top']) {
+  const selected = origin || 'https://prompts.inkroom.ai';
   const label = origin ? 'optional standby origin' : 'default origin without env';
   test('STDIO CLI uses ' + label, {timeout:15000}, async () => {
     const client = new Client({name:'origin-stdio-test',version:'1'});
