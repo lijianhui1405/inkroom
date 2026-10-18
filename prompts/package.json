@@ -1,0 +1,48 @@
+{
+  "name": "inkroom-prompts",
+  "version": "0.1.0-preview.1",
+  "description": "Keyless InkRoom prompt search MCP server and Agent Skill with real example images",
+  "type": "module",
+  "bin": {
+    "inkroom-prompts": "src/cli.mjs"
+  },
+  "exports": "./src/client.mjs",
+  "files": [
+    "src",
+    "skills",
+    "examples",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "PRIVACY.md",
+    "MARKETPLACE.md",
+    "backend",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "start": "node src/cli.mjs"
+  },
+  "engines": {
+    "node": ">=20.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/InkRoom-AI/inkroom-client.git",
+    "directory": "prompts"
+  },
+  "homepage": "https://github.com/InkRoom-AI/inkroom-client/tree/main/prompts",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "agent-skills",
+    "prompts",
+    "inkroom",
+    "no-api-key"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "zod": "3.25.76"
+  }
+}

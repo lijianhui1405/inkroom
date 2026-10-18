@@ -1,0 +1,315 @@
+package prompts
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"log"
+	"net/http"
+	"net/netip"
+	"os"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	promptapp "cloud-canvas/internal/application/prompt"
+	"cloud-canvas/internal/id"
+	"cloud-canvas/internal/infrastructure/authguard"
+	"github.com/gin-gonic/gin"
+)
+
+// PublicPromptPlan contains a server-chosen text-only call. The reservation is
+// a conservative platform quota, never a deduction from a user's wallet.
+type PublicPromptPlan struct {
+	Model          string
+	ReservedMillis int64
+	Run            func(context.Context) (string, error)
+}
+type PublicPromptPlanner func(string) (PublicPromptPlan, error)
+type publicCatalog interface {
+	ListPublicPrompts(promptapp.ListQuery) (promptapp.PromptList, error)
+}
+
+type publicAssistant struct {
+	catalog     publicCatalog
+	guard       authguard.Store
+	plan        PublicPromptPlanner
+	dailyBudget int64
+}
+
+func (h *Handler) WithPublicAssistant(guard authguard.Store, planner PublicPromptPlanner) *Handler {
+	// Explicit operator budget is required before the new anonymous feature can
+	// spend platform money. Invalid/absent settings fail closed for optimization.
+	budget, _ := strconv.ParseInt(os.Getenv("INKROOM_PROMPTS_DAILY_BUDGET_MILLIS"), 10, 64)
+	if budget < 0 || budget > 100_000_000 {
+		budget = 0
+	}
+	h.publicAssistant = &publicAssistant{guard: guard, plan: planner, dailyBudget: budget}
+	if h.prompts != nil {
+		h.publicAssistant.catalog = h.prompts
+	}
+	return h
+}
+
+type publicPromptItem struct {
+	ID              string   `json:"id"`
+	Title           string   `json:"title"`
+	Prompt          string   `json:"prompt"`
+	ExampleImageURL string   `json:"exampleImageUrl,omitempty"`
+	SourceURL       string   `json:"sourceUrl,omitempty"`
+	Tags            []string `json:"tags"`
+}
+
+var errPublicPromptLimit = errors.New("public prompt limit")
+
+type publicPromptLimitError struct{ retryAfter int }
+
+func (e *publicPromptLimitError) Error() string { return errPublicPromptLimit.Error() }
+func (e *publicPromptLimitError) Unwrap() error { return errPublicPromptLimit }
+
+// IPv6 uses /64 so rotating interface addresses cannot reset free usage.
+func publicPromptIdentity(ip string) string {
+	if addr, err := netip.ParseAddr(ip); err == nil {
+		addr = addr.Unmap()
+		if addr.Is6() {
+			return netip.PrefixFrom(addr, 64).Masked().String()
+		}
+		return addr.String()
+	}
+	return "unknown"
+}
+
+// reserve uses DB time and row locks shared across replicas. Unknown upstream
+// outcomes retain their reservation: retrying or restarting cannot reset spend.
+func (a *publicAssistant) reserve(ctx context.Context, ip string, optimize bool, amount int64) error {
+	if a == nil || a.guard == nil {
+		return errors.New("public prompt guard unavailable")
+	}
+	identity := publicPromptIdentity(ip)
+	minute := authguard.Key("public-prompts-minute-v1", identity)
+	globalMinute := authguard.Key("public-prompts-global-minute-v1", "global")
+	globalOptimizeMinute := authguard.Key("public-prompts-global-optimize-minute-v1", "global")
+	optimizeMinute := authguard.Key("public-prompts-optimize-minute-v1", identity)
+	daily := authguard.Key("public-prompts-optimize-day-v1", identity)
+	budget := authguard.Key("public-prompts-budget-v1", "global")
+	calls := authguard.Key("public-prompts-calls-v1", "global")
+	keys := []string{minute, globalMinute}
+	if optimize {
+		keys = append(keys, globalOptimizeMinute, optimizeMinute, daily, budget, calls)
+	}
+	return a.guard.Transact(ctx, keys, func(states map[string]*authguard.State, now time.Time) error {
+		touch := func(key string, window, limit, n int64) error {
+			s := states[key]
+			offset := int64(0)
+			if window == 86400 {
+				offset = 8 * 3600
+			} // Beijing midnight
+			bucket := (now.Unix()+offset)/window*window - offset
+			if s.StartedAt != bucket {
+				s.Count = 0
+				s.StartedAt = bucket
+			}
+			if n < 0 || int64(s.Count) > limit-n {
+				return &publicPromptLimitError{retryAfter: int(bucket + window - now.Unix())}
+			}
+			s.Count += int(n)
+			s.LastSeenAt = now.UnixMilli()
+			return nil
+		}
+		if err := touch(minute, 60, 30, 1); err != nil {
+			return err
+		}
+		if err := touch(globalMinute, 60, 600, 1); err != nil {
+			return err
+		}
+		if optimize {
+			if a.dailyBudget <= 0 || amount < 0 {
+				return errPublicPromptLimit
+			}
+			for _, r := range []struct {
+				key              string
+				window, limit, n int64
+			}{
+				{globalOptimizeMinute, 60, 30, 1}, {optimizeMinute, 60, 3, 1}, {daily, 86400, 10, 1}, {calls, 86400, 500, 1}, {budget, 86400, a.dailyBudget, amount},
+			} {
+				if err := touch(r.key, r.window, r.limit, r.n); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+func publicPromptError(c *gin.Context, status int, code, message string) {
+	c.Header("Cache-Control", "no-store")
+	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": message}})
+}
+func (h *Handler) publicReady(c *gin.Context, optimize bool) *publicAssistant {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Cloudflare-CDN-Cache-Control", "no-store")
+	a := h.publicAssistant
+	if a == nil || a.catalog == nil || a.guard == nil || (optimize && (a.dailyBudget <= 0 || a.plan == nil)) {
+		publicPromptError(c, 503, "unavailable", "提示词助手暂不可用；无需登录或填写 Key。")
+		return nil
+	}
+	return a
+}
+func reservePublicPrompt(c *gin.Context, a *publicAssistant, optimize bool, amount int64) bool {
+	if err := a.reserve(c.Request.Context(), c.ClientIP(), optimize, amount); err != nil {
+		if errors.Is(err, errPublicPromptLimit) {
+			retryAfter := 60
+			var limit *publicPromptLimitError
+			if errors.As(err, &limit) {
+				retryAfter = limit.retryAfter
+			}
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+			publicPromptError(c, 429, "rate_limited", "免费提示词额度暂不可用，请稍后再试；无需 Key。")
+		} else {
+			publicPromptError(c, 503, "unavailable", "提示词服务暂不可用，请稍后再试。")
+		}
+		return false
+	}
+	return true
+}
+
+func (h *Handler) PublicPromptSearch(c *gin.Context) {
+	a := h.publicReady(c, false)
+	if a == nil {
+		return
+	}
+	query := strings.TrimSpace(c.Query("query"))
+	limit := 3
+	if raw := c.Query("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 5 {
+			publicPromptError(c, 400, "invalid_input", "limit 应为 1–5。")
+			return
+		}
+		limit = n
+	}
+	if query == "" || utf8.RuneCountInString(query) > 200 {
+		publicPromptError(c, 400, "invalid_input", "请提供 1–200 字的关键词。")
+		return
+	}
+	// No personal scope, user ID, arbitrary filters or model inputs cross
+	// this anonymous boundary. All keywords are applied in one bounded read.
+	terms := strings.FieldsFunc(query, func(r rune) bool {
+		return r == ' ' || r == '\t' || r == '\n' || r == ',' || r == '，' || r == ';' || r == '；'
+	})
+	if len(terms) == 0 || len(terms) > 3 {
+		publicPromptError(c, 400, "invalid_input", "请用最多 3 组关键词检索。")
+		return
+	}
+	if !reservePublicPrompt(c, a, false, 0) {
+		return
+	}
+	result, err := a.catalog.ListPublicPrompts(promptapp.ListQuery{Keywords: terms, Page: 1, PageSize: 15, ItemsOnly: true})
+	if err != nil {
+		publicPromptError(c, 503, "catalog_unavailable", "检索暂不可用；未调用 AI 优化。")
+		return
+	}
+	found := map[string]publicPromptItem{}
+	scores := map[string]int{}
+	for _, p := range result.Items {
+		if p.ID == "" || strings.TrimSpace(p.Prompt) == "" {
+			continue
+		}
+		score, matches := 0, 0
+		for _, t := range terms {
+			t = strings.ToLower(t)
+			if strings.Contains(strings.ToLower(p.Title+" "+strings.Join(p.Tags, " ")), t) {
+				score += 4
+				matches++
+			} else if strings.Contains(strings.ToLower(p.Prompt), t) {
+				score++
+				matches++
+			}
+		}
+		if matches != len(terms) {
+			continue
+		}
+		found[p.ID] = publicPromptItem{ID: p.ID, Title: p.Title, Prompt: p.Prompt, Tags: p.Tags, ExampleImageURL: publicPromptImageURL(p.CoverURL), SourceURL: p.GithubURL}
+		scores[p.ID] = score
+	}
+	items := make([]publicPromptItem, 0, len(found))
+	for _, p := range found {
+		items = append(items, p)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if scores[items[i].ID] != scores[items[j].ID] {
+			return scores[items[i].ID] > scores[items[j].ID]
+		}
+		return items[i].ID < items[j].ID
+	})
+	more := result.Total > limit || len(items) > limit
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	optimizationAvailable := false
+	if a.plan != nil && a.dailyBudget > 0 {
+		preview, err := a.plan(query)
+		optimizationAvailable = err == nil && preview.Run != nil && preview.ReservedMillis >= 0 && preview.ReservedMillis <= a.dailyBudget
+	}
+	c.JSON(200, gin.H{"kind": "library", "query": query, "items": items, "hasMore": more, "optimizationAvailable": optimizationAvailable})
+}
+
+var publicPromptAssetPath = regexp.MustCompile(`^/api/prompt-assets/[a-zA-Z0-9_-]+/([0-9a-f]{24}|[0-9a-f]{32})\.webp$`)
+
+func publicPromptImageURL(raw string) string {
+	const origin = "https://static.inkroom.ai"
+	path := strings.TrimPrefix(raw, origin)
+	if publicPromptAssetPath.MatchString(path) {
+		return origin + path
+	}
+	return ""
+}
+
+func (h *Handler) PublicPromptOptimize(c *gin.Context) {
+	a := h.publicReady(c, true)
+	if a == nil {
+		return
+	}
+	var input struct {
+		Query string `json:"query"`
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&input) != nil || decoder.Decode(&struct{}{}) != io.EOF {
+		publicPromptError(c, 400, "invalid_input", "请提供 query 文本，不支持模型、消息或图片参数。")
+		return
+	}
+	input.Query = strings.TrimSpace(input.Query)
+	if input.Query == "" || utf8.RuneCountInString(input.Query) > 500 {
+		publicPromptError(c, 400, "invalid_input", "请提供 1–500 字的创作想法。")
+		return
+	}
+	plan, err := a.plan(input.Query)
+	if err != nil || plan.Run == nil || plan.ReservedMillis < 0 || plan.ReservedMillis > a.dailyBudget {
+		publicPromptError(c, 503, "optimizer_unavailable", "AI 优化暂不可用；无需配置 Key。")
+		return
+	}
+	if !reservePublicPrompt(c, a, true, plan.ReservedMillis) {
+		return
+	}
+	requestID := id.New()
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
+	text, err := plan.Run(ctx)
+	outcome := "success"
+	if err != nil || strings.TrimSpace(text) == "" || len(text) > 16000 {
+		outcome = "failed"
+	}
+	// No query, raw provider response, credentials or signed links in the audit.
+	log.Printf("public_prompt_optimize request=%s model=%s reserved_millis=%d outcome=%s", requestID, plan.Model, plan.ReservedMillis, outcome)
+	if outcome != "success" {
+		publicPromptError(c, 502, "optimizer_failed", "AI 优化未返回结果；请稍后再试。未生成图片。")
+		return
+	}
+	c.JSON(200, gin.H{"kind": "optimized", "prompt": strings.TrimSpace(text), "model": plan.Model, "exampleImageUrl": nil, "requestId": requestID})
+}

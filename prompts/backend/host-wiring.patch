@@ -1,0 +1,101 @@
+diff --git a/internal/application/prompt/service.go b/internal/application/prompt/service.go
+index e28b74bd..0e8e8196 100644
+--- a/internal/application/prompt/service.go
++++ b/internal/application/prompt/service.go
+@@ -71,6 +71,7 @@ type ListQuery struct {
+ 	Sort           string
+ 	FavoriteUserID string // Assigned by the authenticated application boundary, never from request parameters.
+ 	Keyword        string
++	Keywords       []string // Server-assigned literal AND search for the public assistant.
+ 	Tags           []string
+ 	Category       string
+ 	Group          string
+@@ -616,6 +617,7 @@ func (s *Service) listPromptsWithCategories(q ListQuery, categories, readyAssetC
+ 		Sort:                    q.Sort,
+ 		FavoriteUserID:          q.FavoriteUserID,
+ 		Keyword:                 q.Keyword,
++		Keywords:                q.Keywords,
+ 		Tags:                    q.Tags,
+ 		Category:                q.Category,
+ 		Group:                   q.Group,
+diff --git a/internal/domain/prompt/repository/repository.go b/internal/domain/prompt/repository/repository.go
+index 74c1d195..5e89f349 100644
+--- a/internal/domain/prompt/repository/repository.go
++++ b/internal/domain/prompt/repository/repository.go
+@@ -12,6 +12,7 @@ type PromptQuery struct {
+ 	Sort                    string
+ 	FavoriteUserID          string
+ 	Keyword                 string
++	Keywords                []string // Literal AND terms; preserves the legacy Keyword behavior.
+ 	Tags                    []string
+ 	Category                string
+ 	Group                   string
+diff --git a/internal/infrastructure/persistence/prompt/repo.go b/internal/infrastructure/persistence/prompt/repo.go
+index 8e30b43c..1f51e071 100644
+--- a/internal/infrastructure/persistence/prompt/repo.go
++++ b/internal/infrastructure/persistence/prompt/repo.go
+@@ -960,6 +960,11 @@ func applyPromptBaseFilters(tx *gorm.DB, q domainrepo.PromptQuery) *gorm.DB {
+ 		like := "%" + q.Keyword + "%"
+ 		tx = tx.Where("title LIKE ? OR prompt LIKE ?", like, like)
+ 	}
++	for _, term := range q.Keywords {
++		// A keyword is literal text, never a caller-provided LIKE wildcard.
++		like := "%" + strings.NewReplacer("!", "!!", "%", "!%", "_", "!_").Replace(term) + "%"
++		tx = tx.Where("(title LIKE ? ESCAPE '!' OR prompt LIKE ? ESCAPE '!' OR tags LIKE ? ESCAPE '!')", like, like, like)
++	}
+ 	if isActivePromptOption(q.Category) {
+ 		tx = tx.Where("category = ?", q.Category)
+ 	}
+diff --git a/internal/interfaces/handler/handler.go b/internal/interfaces/handler/handler.go
+index f7435e68..71a9145d 100644
+--- a/internal/interfaces/handler/handler.go
++++ b/internal/interfaces/handler/handler.go
+@@ -239,7 +239,7 @@ func New(deps HandlerDeps) *Handler {
+ 		ImageBatches:  imageBatches,
+ 		MCP:           mcp,
+ 		Plans:         planhandler.New(deps.Plans, deps.Users),
+-		Prompts:       prompthandler.New(deps.Prompts),
++		Prompts:       prompthandler.New(deps.Prompts).WithPublicAssistant(authguard.NewSQLStore(deps.BackofficeDB), ai.PreparePublicPrompt),
+ 		Redemptions:   redemptionhandler.New(deps.Redemptions, deps.Users),
+ 		Seedance:      seedancehandler.New(deps.Seedance),
+ 		Settings:      settinghandler.New(deps.Settings, deps.PublicEndpoints),
+diff --git a/internal/interfaces/handler/prompt_service.go b/internal/interfaces/handler/prompt_service.go
+index ccb63f0c..dbf950d9 100644
+--- a/internal/interfaces/handler/prompt_service.go
++++ b/internal/interfaces/handler/prompt_service.go
+@@ -34,7 +34,7 @@ func newPromptHandler(deps HandlerDeps) *Handler {
+ 		AI:           ai,
+ 		APIKeys:      apikeyhandler.New(deps.APIKeys, deps.Settings).WithEntitlements(deps.Entitlements),
+ 		Auth:         authhandler.New(deps.Users).WithEntitlements(deps.Entitlements).WithSettings(deps.Settings).WithAuthGuardStore(authguard.NewSQLStore(deps.BackofficeDB)),
+-		Prompts:      prompthandler.New(deps.Prompts),
++		Prompts:      prompthandler.New(deps.Prompts).WithPublicAssistant(authguard.NewSQLStore(deps.BackofficeDB), ai.PreparePublicPrompt),
+ 		Backoffice:   backofficehandler.New(deps.BackofficeDB).WithPromptCollectionPolicy(deps.Settings.UserImageRecordCollectionPolicy),
+ 		PromptBridge: &promptBridge{prompts: deps.Prompts, users: deps.Users, secret: promptclient.SharedSecret(config.Cfg.JWTSecret)},
+ 	}
+diff --git a/internal/interfaces/handler/prompts/handler.go b/internal/interfaces/handler/prompts/handler.go
+index 36c86f2a..40d6a9a3 100644
+--- a/internal/interfaces/handler/prompts/handler.go
++++ b/internal/interfaces/handler/prompts/handler.go
+@@ -106,7 +106,8 @@ func promptAssetCacheHeaders(version string, queryFree bool) (string, string) {
+ }
+ 
+ type Handler struct {
+-	prompts *promptapp.Service
++	prompts         *promptapp.Service
++	publicAssistant *publicAssistant
+ }
+ 
+ func New(prompts *promptapp.Service) *Handler {
+diff --git a/internal/interfaces/handler/prompts/router.go b/internal/interfaces/handler/prompts/router.go
+index 08993d22..98eb6e40 100644
+--- a/internal/interfaces/handler/prompts/router.go
++++ b/internal/interfaces/handler/prompts/router.go
+@@ -3,6 +3,8 @@ package prompts
+ import "github.com/gin-gonic/gin"
+ 
+ func (h *Handler) RegisterPublicRoutes(api *gin.RouterGroup) {
++	api.GET("/prompts/assistant/search", h.PublicPromptSearch)
++	api.POST("/prompts/assistant/optimize", h.PublicPromptOptimize)
+ 	api.GET("/prompts", h.Prompts)
+ 	api.GET("/prompt-sources", h.PromptSources)
+ 	api.GET("/prompt-assets/:id/content", h.PromptAssetContent)

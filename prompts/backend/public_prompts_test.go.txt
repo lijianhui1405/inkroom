@@ -1,0 +1,103 @@
+package ai
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	settingapp "cloud-canvas/internal/application/setting"
+	entity "cloud-canvas/internal/domain/setting/entity"
+)
+
+func publicPromptTestHandler(t *testing.T, url string) *Handler {
+	t.Helper()
+	t.Setenv("INKROOM_PROMPTS_TEXT_MODEL", "gpt-5.4")
+	channel := entity.ModelChannel{ID: "public-prompts-test", BaseURL: url, APIKey: "test-only-key", Enabled: true, Weight: 1, Models: []string{"gpt-5.4"}, Capabilities: entity.ModelCapabilities{Responses: true}, ModelCosts: []entity.ModelCost{{Model: "gpt-5.4", Text: true, TextInputCreditMillisPerMillion: 1_000_000, TextOutputCreditMillisPerMillion: 1_000_000}}}
+	settings := settingapp.NewService(guestImageSettingDomain{settings: entity.Settings{Private: entity.PrivateSetting{Channels: []entity.ModelChannel{channel}}}}, nil)
+	return &Handler{settings: settings}
+}
+func TestPublicPromptPlanUsesFixedTextPayloadAndPricedUpperBound(t *testing.T) {
+	var calls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Method != "POST" || !strings.HasSuffix(r.URL.Path, "/responses") || r.Header.Get("Authorization") != "Bearer test-only-key" {
+			t.Error("invalid fixed upstream request")
+		}
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		if json.Unmarshal(body, &payload) != nil || payload["max_output_tokens"] != float64(512) || payload["model"] != "gpt-5.4" || len(payload) != 3 {
+			t.Errorf("payload=%s", body)
+		}
+		input := payload["input"].([]any)
+		if len(input) != 2 || input[1].(map[string]any)["content"] != "保留文字周末见" {
+			t.Error("lost user intent")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"completed","output_text":"咖啡馆开业海报，保留文字周末见"}`))
+	}))
+	defer upstream.Close()
+	plan, err := publicPromptTestHandler(t, upstream.URL).PreparePublicPrompt("保留文字周末见")
+	if err != nil || plan.ReservedMillis < 1500 {
+		t.Fatal("missing priced reservation", plan.ReservedMillis, err)
+	}
+	if calls.Load() != 0 {
+		t.Fatal("planning called provider before reservation")
+	}
+	text, err := plan.Run(context.Background())
+	if err != nil || !strings.Contains(text, "周末见") || calls.Load() != 1 {
+		t.Fatal(text, err, calls.Load())
+	}
+}
+func TestPublicPromptNeverRetriesOrDeliversPartialOversizedOrErrorBody(t *testing.T) {
+	for _, body := range []string{`{"status":"incomplete","output_text":"partial"}`, strings.Repeat("x", (64<<10)+1), `{"error":{"message":"private provider message"}}`} {
+		t.Run(body[:10], func(t *testing.T) {
+			var calls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1); _, _ = w.Write([]byte(body)) }))
+			defer server.Close()
+			plan, err := publicPromptTestHandler(t, server.URL).PreparePublicPrompt("poster")
+			if err != nil {
+				t.Fatal(err)
+			}
+			text, err := plan.Run(context.Background())
+			if err == nil || text != "" || calls.Load() != 1 {
+				t.Fatal("invalid result delivered", text, err, calls.Load())
+			}
+		})
+	}
+}
+func TestPublicPromptCancellationAndRedirectDoNotSpendAgain(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.Header().Set("Location", "/other")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+	}))
+	defer server.Close()
+	plan, err := publicPromptTestHandler(t, server.URL).PreparePublicPrompt("poster")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = plan.Run(context.Background()); err == nil || calls.Load() != 1 {
+		t.Fatal("followed redirect", calls.Load(), err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err = plan.Run(ctx); err == nil || calls.Load() != 1 {
+		t.Fatal("ignored cancellation", calls.Load(), err)
+	}
+}
+func TestPublicPromptNoModelNoPricingNoCall(t *testing.T) {
+	if _, err := (&Handler{}).PreparePublicPrompt("poster"); err == nil {
+		t.Fatal("unconfigured call accepted")
+	}
+	h := publicPromptTestHandler(t, "https://unused.example")
+	t.Setenv("INKROOM_PROMPTS_TEXT_MODEL", "not-configured")
+	if _, err := h.PreparePublicPrompt("poster"); err == nil {
+		t.Fatal("arbitrary model accepted")
+	}
+}

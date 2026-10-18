@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "inkroom-prompts": {
+      "command": "npx",
+      "args": ["-y", "--package", "https://github.com/lijianhui1405/inkroom/releases/download/prompts-v0.1.0-preview.1/inkroom-prompts-0.1.0-preview.1.tgz", "inkroom-prompts"]
+    }
+  }
+}

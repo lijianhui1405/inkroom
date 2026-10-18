@@ -1,5 +1,10 @@
 # InkRoom
 
+## Keyless prompt assistant (preview)
+
+[InkRoom Prompts MCP + Skill](prompts/) searches public prompts with real example images and offers capped text optimization. No login or Key. MIT applies only to the new `prompts/` and `skills/inkroom-prompts/` directories. Hosted rollout and live acceptance are pending; existing paid image services keep their authorization.
+
+
 Official client integration materials for [InkRoom](https://inkroom.ai): image generation, reference-image editing, batch model comparisons, cost previews and original-image delivery.
 
 ## Agent Skill
@@ -25,4 +30,4 @@ This repository distributes client integrations. It does not contain the hosted 
 
 The Skill bundle is free to download. Image generation consumes credits at the model prices shown in InkRoom. Preview costs and follow the user’s configured authorization before generating; do not bypass limits by splitting batches. Keep original receipts and recover completed images after interrupted delivery instead of generating again. User credentials are never included in this repository or its bundles.
 
-Copyright InkRoom. No additional open-source license is granted by this publication.
+Copyright InkRoom. The MIT exception above applies only to the new prompt assistant directories; the existing image client retains its prior licensing.
