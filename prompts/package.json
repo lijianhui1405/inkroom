@@ -1,6 +1,6 @@
 {
   "name": "inkroom-prompts",
-  "version": "0.1.0-preview.3",
+  "version": "0.1.0-preview.4",
   "description": "Keyless InkRoom prompt search MCP server and Agent Skill with real example images",
   "type": "module",
   "bin": {

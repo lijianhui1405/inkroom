@@ -1,10 +1,12 @@
 # InkRoom 提示词助手
 
+[官方提示词工具](https://inkroom.ai/tools/prompts) · [使用与MCP文档](https://inkroom.ai/tools/prompts/docs)
+
 **输入几个关键词，找到提示词和真实示例图。免登录、免 Key。**
 
 [English](README.md) · [Skill](skills/inkroom-prompts/SKILL.md) · [隐私说明](PRIVACY.md)
 
-> **当前为源码预览版，线上接口待发布验收。** MCP、Skill 和服务端改动已实现并进行本地验证；安装成功不等于线上服务已开通。正式上线前，不将本预览版作为已经可用的托管服务提交市场。
+> **正式提示词工具：** 请使用上方官方工具和文档。MCP 包在本机通过 STDIO 或 loopback HTTP 运行，当前不公布公共 Remote MCP 地址。
 
 对助手说：**“帮我找几个暖色咖啡馆海报提示词，带示例图。”**
 
@@ -36,7 +38,7 @@ node src/cli.mjs --help
   "mcpServers": {
     "inkroom-prompts": {
       "command": "npx",
-      "args": ["-y", "--package", "https://github.com/InkRoom-AI/inkroom-client/releases/download/prompts-v0.1.0-preview.3/inkroom-prompts-0.1.0-preview.3.tgz", "inkroom-prompts"]
+      "args": ["-y", "--package", "https://github.com/InkRoom-AI/inkroom-client/releases/download/prompts-v0.1.0-preview.4/inkroom-prompts-0.1.0-preview.4.tgz", "inkroom-prompts"]
     }
   }
 }
@@ -45,17 +47,6 @@ node src/cli.mjs --help
 包通过 GitHub Release 分发，未声明已发布 npm。源码模式可将命令改为 `node`，参数填写 `prompts/src/cli.mjs` 的绝对路径。其他客户端按各自配置格式填写相同命令和参数，不添加鉴权字段。
 
 需要本地 HTTP 时运行 `node src/cli.mjs --http 8788`，连接 `http://127.0.0.1:8788/mcp`，无需 Header。预览版没有宣布已上线的官方公网 Remote MCP 地址。
-
-### 可选测试服务地址
-
-普通用户无需配置环境变量，默认使用 `https://prompts.inkroom.ai`。`0.1.0-preview.3` 预览版支持可选的 `INKROOM_PROMPTS_ORIGIN`，供运营指定测试环境（例如 `https://prompts.inkroom.top`）时使用。STDIO、本地 HTTP 和独立 Skill 使用同一设置；它不改变本地 HTTP 监听地址，也不增加任何鉴权要求。
-
-```sh
-INKROOM_PROMPTS_ORIGIN=https://prompts.inkroom.top node src/cli.mjs --http 8788
-INKROOM_PROMPTS_ORIGIN=https://prompts.inkroom.top node skills/inkroom-prompts/scripts/prompts.mjs search "咖啡馆 海报"
-```
-
-STDIO 配置见 [`examples/mcp-test.json`](examples/mcp-test.json)：将绝对路径替换为本次源码安装中的 CLI 路径，在客户端的 `env` 中填写测试地址。不设置该变量即恢复默认服务。仅接受完整 HTTPS origin；只有本机回环测试允许 HTTP。不接受账号密码、路径、查询参数或片段。切换地址不代表目标环境已完成验收。
 
 ## Skill 安装
 

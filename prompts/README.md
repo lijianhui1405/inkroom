@@ -1,10 +1,12 @@
 # InkRoom Prompts
 
+[Official prompt tools / 官方提示词工具](https://inkroom.ai/tools/prompts) · [Usage / 使用文档](https://inkroom.ai/tools/prompts/docs)
+
 **Image prompt inspiration, without an account or API key.**
 
 [简体中文](README.zh-CN.md) · [Skill](skills/inkroom-prompts/SKILL.md) · [Privacy](PRIVACY.md)
 
-> **Preview source release — hosted rollout pending.** The MCP transports and Skill are implemented and locally tested. The new public search and optimization endpoints still require InkRoom's release process and live acceptance. Installation does not mean the hosted feature is already available. Do not submit this preview as a working hosted marketplace service.
+> **Hosted prompt tools:** use the official tools and documentation linked above. The MCP package runs locally over STDIO or loopback HTTP; no public Remote MCP endpoint is announced.
 
 Ask your assistant: **“Find warm café poster prompts with example images.”**
 
@@ -35,7 +37,7 @@ After downloading the GitHub preview package, use this portable STDIO configurat
   "mcpServers": {
     "inkroom-prompts": {
       "command": "npx",
-      "args": ["-y", "--package", "https://github.com/InkRoom-AI/inkroom-client/releases/download/prompts-v0.1.0-preview.3/inkroom-prompts-0.1.0-preview.3.tgz", "inkroom-prompts"]
+      "args": ["-y", "--package", "https://github.com/InkRoom-AI/inkroom-client/releases/download/prompts-v0.1.0-preview.4/inkroom-prompts-0.1.0-preview.4.tgz", "inkroom-prompts"]
     }
   }
 }
@@ -50,17 +52,6 @@ node src/cli.mjs --http 8788
 ```
 
 Connect to `http://127.0.0.1:8788/mcp` without headers. The listener binds only to loopback. No official public Remote MCP URL is announced in this preview. Operators deploying behind TLS must validate the public Host/Origin, set trusted proxies correctly, enforce ingress limits and complete live acceptance first.
-
-### Optional test-service address
-
-Normal installations need no environment variables and use `https://prompts.inkroom.ai`. The `0.1.0-preview.3` preview supports `INKROOM_PROMPTS_ORIGIN` for an operator-directed test, for example `https://prompts.inkroom.top`. It applies equally to STDIO, local HTTP and the standalone Skill. It does not change the local HTTP listener address or add authentication.
-
-```sh
-INKROOM_PROMPTS_ORIGIN=https://prompts.inkroom.top node src/cli.mjs --http 8788
-INKROOM_PROMPTS_ORIGIN=https://prompts.inkroom.top node skills/inkroom-prompts/scripts/prompts.mjs search "café poster"
-```
-
-For STDIO, see [`examples/mcp-test.json`](examples/mcp-test.json): replace its absolute CLI path with your source installation path and set the `env` entry in the client. Omit the variable to return to the default service. Only a complete HTTPS origin is accepted; HTTP is allowed only for loopback testing. Credentials, paths, queries and fragments are rejected. A different service address does not imply that its hosted endpoints have passed acceptance.
 
 ## Install the Skill
 

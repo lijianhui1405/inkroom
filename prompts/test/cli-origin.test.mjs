@@ -29,7 +29,7 @@ function environment(origin) {
   return {PATH:process.env.PATH || '', ...(origin === undefined ? {} : {INKROOM_PROMPTS_ORIGIN:origin})};
 }
 async function assertTools(client, origin) {
-  assert.equal(client.getServerVersion().version, '0.1.0-preview.3');
+  assert.equal(client.getServerVersion().version, '0.1.0-preview.4');
   const search = await client.callTool({name:'search_prompts', arguments:{query:'poster'}});
   assert.equal(search.isError, undefined);
   assert.equal(search.structuredContent.items[0].prompt, origin + '/api/prompts/assistant/search?query=poster&limit=3');
@@ -59,7 +59,7 @@ async function waitForListener(child) {
   });
 }
 
-for (const origin of [undefined, 'https://prompts.inkroom.top']) {
+for (const origin of [undefined, 'https://operator.example.test']) {
   const selected = origin || 'https://prompts.inkroom.ai';
   const label = origin ? 'optional standby origin' : 'default origin without env';
   test('STDIO CLI uses ' + label, {timeout:15000}, async () => {
@@ -93,7 +93,7 @@ for (const origin of [undefined, 'https://prompts.inkroom.top']) {
 }
 
 test('all executable entry points reject invalid optional origins before networking', {timeout:15000}, async () => {
-  for (const origin of ['http://example.test','https://user:pass@inkroom.top','https://inkroom.top/path','https://inkroom.top/?x=1','https://inkroom.top/#fragment']) {
+  for (const origin of ['http://example.test','https://user:pass@example.test','https://example.test/path','https://example.test/?x=1','https://example.test/#fragment']) {
     for (const args of [[cli],[cli,'--http','8788'],[skill,'search','poster']]) {
       await assert.rejects(run(process.execPath, ['--import',preload,...args], {env:environment(origin),timeout:2000}), error => {
         assert.equal(error.code, 1, 'must reject the origin, not merely time out');

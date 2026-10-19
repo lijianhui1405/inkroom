@@ -11,7 +11,7 @@ Published integration source:
 
 ## Isolated host integration
 
-The free hosted API uses **https://prompts.inkroom.ai**, served by the standalone `cmd/prompt-assistant` binary in `inkroom-prompt-assistant`. Test rollout uses `https://prompts.inkroom.top`. These are the target endpoints; DNS/TLS/container availability must be confirmed by the release owner before claiming live availability.
+The free hosted API uses **https://prompts.inkroom.ai**, served by the standalone `cmd/prompt-assistant` binary in `inkroom-prompt-assistant`. These are the target endpoints; DNS/TLS/container availability must be confirmed by the release owner before claiming live availability.
 
 Only these routes are registered in that dedicated router:
 

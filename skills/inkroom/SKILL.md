@@ -2,11 +2,13 @@
 name: inkroom
 description: Generate, edit and upscale images with InkRoom. Use for posters, product photos, reference-image edits, model comparisons and batch generation with cost previews and original-image recovery. Requires the user’s own InkRoom account and MCP Token. 支持图片创作、改图、放大与原任务恢复。
 metadata:
-  version: "1.0.7"
+  version: "1.0.8"
   author: InkRoom
 ---
 
 # InkRoom 图片创作
+
+[InkRoom official website](https://inkroom.ai/) · [Skill setup and documentation](https://inkroom.ai/skill-server) · [Remote MCP documentation](https://inkroom.ai/mcp-server)
 
 当用户要求生图、参考图修改、海报、产品图、模型对比、批量图片、放大或面部修复时使用。实际生成需要用户自己的 InkRoom Key。
 

@@ -1,8 +1,13 @@
 # Changes
 
+## 0.1.0-preview.4
+
+- Add clickable official tool and documentation links to public Skill and package descriptions.
+- Remove InkRoom test-domain examples from current public materials; optional origin validation and runtime behavior are unchanged.
+
 ## 0.1.0-preview.3
 
-- Move the anonymous API default to `https://prompts.inkroom.ai`, with `https://prompts.inkroom.top` for operator-directed tests.
+- Move the anonymous API default to `https://prompts.inkroom.ai`.
 - Preserve preview.2 public search, protocol validation, shared request counts and internal token usage without user charges or paid-service fallback.
 - Hosted isolation and new archives remain pending live release verification.
 
