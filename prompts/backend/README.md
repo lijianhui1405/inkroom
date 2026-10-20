@@ -1,4 +1,4 @@
-# InkRoom host integration (preview)
+# InkRoom host integration source
 
 This folder publishes the new anonymous HTTP boundary and text-only optimizer integration as MIT source. These Go files are adapters for InkRoom's existing `cloud-canvas` application, **not an independently runnable Go service**. The Node MCP server and Skill in the parent directory run independently; they call the hosted HTTP API.
 
@@ -52,7 +52,7 @@ go test ./internal/interfaces/handler/prompts ./internal/interfaces/handler/ai -
 go test -race ./internal/interfaces/handler/prompts -run PublicPrompt -count=1
 ```
 
-Deployment and live supplier acceptance remain explicit release tasks. `0.1.0-preview.3` is pending publication and live acceptance. These files do not grant a license to InkRoom's surrounding application or publish accounts, database content or provider credentials.
+Deployment and live supplier acceptance remain explicit release tasks. Client release 1.0.3 does not deploy or modify the hosted service; use the release owner’s exact scoped acceptance records for hosted availability. These files do not grant a license to InkRoom's surrounding application or publish accounts, database content or provider credentials.
 
 The host's application `ListQuery` and repository `PromptQuery` also add a server-only `Keywords []string`. Forward it with `Keywords: q.Keywords`. The SQL base filter applies each keyword as an AND term before pagination, with literal LIKE escaping and title/prompt/tag matching. Preserve the old single-`Keyword` behavior for website and paid MCP compatibility. The exact small adapter diff is supplied in `host-wiring.patch`; it is not a patch for a standalone public repository.
 

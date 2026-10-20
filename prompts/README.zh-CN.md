@@ -31,14 +31,14 @@ node src/cli.mjs --help
 
 也可使用原公开仓库 `https://github.com/lijianhui1405/inkroom.git` 下相同的 `prompts` 目录。无需填写任何密钥或准备 `.env`。
 
-支持 `mcpServers` 配置的客户端，可使用预览包：
+支持 `mcpServers` 配置的客户端，可使用正式包：
 
 ```json
 {
   "mcpServers": {
     "inkroom-prompts": {
       "command": "npx",
-      "args": ["-y", "--package", "https://github.com/InkRoom-AI/inkroom-client/releases/download/prompts-v0.1.0-preview.4/inkroom-prompts-0.1.0-preview.4.tgz", "inkroom-prompts"]
+      "args": ["-y", "--package", "https://github.com/InkRoom-AI/inkroom-client/releases/download/prompts-v1.0.3/inkroom-prompts-1.0.3.tgz", "inkroom-prompts"]
     }
   }
 }
@@ -74,3 +74,10 @@ AI 优化属于平台内部调用，使用管理员选择的内部文本模型�
 ## 服务边界
 
 免费 MCP 和 Skill 统一调用 **https://prompts.inkroom.ai** 的检索与文字优化接口，后端为独立的 `inkroom-prompt-assistant` 容器。故障时不会回退到收费生图接口。网页工具仍位于 `inkroom.ai`，示例图仍使用 `static.inkroom.ai`。这是目标发布域名，是否已可用仍以真实请求和发布验收为准。
+
+
+## 统一正式版本与 Cursor 插件
+
+免费提示词 MCP、Skill、MCPB 与 Cursor 插件统一采用 **1.0.3**。根市场配置新增独立 inkroom-prompts，源目录为 prompts/；原付费图片 inkroom 插件不变。需要 Node.js20.3+，免账号、Key、Token，不生成图片。源码分发、平台审核、上架和实际客户端安装分别核验，不能相互替代。
+
+特殊平台仅适配元数据或包结构，保持本产品基线版本，差异记录在版本清单中；已待审旧批次保留历史，不通过改名重复提交。发布前运行 `npm run verify:release` 检查版本、安装地址、Skill镜像与Cursor配置。

@@ -1,6 +1,6 @@
 {
   "name": "inkroom-prompts",
-  "version": "0.1.0-preview.4",
+  "version": "1.0.3",
   "description": "Keyless InkRoom prompt search MCP server and Agent Skill with real example images",
   "type": "module",
   "bin": {
@@ -17,11 +17,14 @@
     "PRIVACY.md",
     "MARKETPLACE.md",
     "backend",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "release.json",
+    ".cursor-plugin"
   ],
   "scripts": {
-    "test": "node --test",
-    "start": "node src/cli.mjs"
+    "test": "node scripts/verify-release.mjs && node --test",
+    "start": "node src/cli.mjs",
+    "verify:release": "node scripts/verify-release.mjs"
   },
   "engines": {
     "node": ">=20.3"

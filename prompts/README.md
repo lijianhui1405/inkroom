@@ -30,20 +30,20 @@ node src/cli.mjs --help
 
 Alternatively clone `https://github.com/lijianhui1405/inkroom.git` and open its `prompts` directory. No `.env` or credentials are needed.
 
-After downloading the GitHub preview package, use this portable STDIO configuration in clients that support `mcpServers`:
+After downloading the GitHub release package, use this portable STDIO configuration in clients that support `mcpServers`:
 
 ```json
 {
   "mcpServers": {
     "inkroom-prompts": {
       "command": "npx",
-      "args": ["-y", "--package", "https://github.com/InkRoom-AI/inkroom-client/releases/download/prompts-v0.1.0-preview.4/inkroom-prompts-0.1.0-preview.4.tgz", "inkroom-prompts"]
+      "args": ["-y", "--package", "https://github.com/InkRoom-AI/inkroom-client/releases/download/prompts-v1.0.3/inkroom-prompts-1.0.3.tgz", "inkroom-prompts"]
     }
   }
 }
 ```
 
-The preview archive is distributed on GitHub, **not the npm registry**. For source installations, use `node` with the absolute path to `prompts/src/cli.mjs` instead. Clients that use a different configuration format must map the same command and argument array to their MCP settings; do not add authentication fields.
+The release archive is distributed on GitHub, **not the npm registry**. For source installations, use `node` with the absolute path to `prompts/src/cli.mjs` instead. Clients that use a different configuration format must map the same command and argument array to their MCP settings; do not add authentication fields.
 
 For a local Streamable HTTP connection:
 
@@ -51,7 +51,7 @@ For a local Streamable HTTP connection:
 node src/cli.mjs --http 8788
 ```
 
-Connect to `http://127.0.0.1:8788/mcp` without headers. The listener binds only to loopback. No official public Remote MCP URL is announced in this preview. Operators deploying behind TLS must validate the public Host/Origin, set trusted proxies correctly, enforce ingress limits and complete live acceptance first.
+Connect to `http://127.0.0.1:8788/mcp` without headers. The listener binds only to loopback. No official public Remote MCP URL is announced for this local package. Operators deploying behind TLS must validate the public Host/Origin, set trusted proxies correctly, enforce ingress limits and complete live acceptance first.
 
 ## Install the Skill
 
@@ -101,3 +101,15 @@ The same Skill is also mirrored at each repository's top-level `skills/inkroom-p
 ## Service boundary
 
 The MCP and Skill both call **https://prompts.inkroom.ai** for free search and text optimization. The backend runs in its own `inkroom-prompt-assistant` container; it does not fall back to the paid image API. Website pages stay on `inkroom.ai`, and library examples stay on `static.inkroom.ai`. This domain is the release target; hosted availability still requires live acceptance.
+
+
+## Cursor plugin
+
+The repository marketplace includes a separate `inkroom-prompts` plugin rooted in `prompts/`. It combines the free local STDIO MCP and the `inkroom-prompts` Skill. It does not change the paid `inkroom` plugin. Marketplace review and actual Cursor installation are separate states; do not treat this source package as an approved listing.
+
+- Plugin distribution version: `1.0.3`; pinned MCP runtime: `1.0.3`.
+- Requires Node.js 20.3+ and internet access. The MCP starts with `npx` using the existing public GitHub release TGZ.
+- No account, API key, MCP Token, plugin secret, or paid image-generation setup is required. The service has shared request-count limits.
+- Tools: `search_prompts` and `optimize_prompt`. Optimization may cost the platform money; no model call runs during installation. Follow the included Skill before calling tools.
+- Official tools: https://inkroom.ai/tools/prompts . Documentation: https://inkroom.ai/tools/prompts/docs . Privacy: [PRIVACY.md](PRIVACY.md).
+- No hooks, background jobs, telemetry, or credentials are included. Disable or uninstall the plugin through Cursor to remove this integration; preserve unrelated MCP connections.

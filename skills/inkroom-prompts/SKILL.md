@@ -1,4 +1,5 @@
 ---
+version: 1.0.3
 name: inkroom-prompts
 description: Find and improve image prompts with InkRoom, including real example images from its public prompt library. Use for prompt inspiration, keyword searches, or rewriting an image idea into a usable prompt. No account, API key, or MCP Token required. Does not generate images.
 license: MIT

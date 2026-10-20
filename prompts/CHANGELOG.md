@@ -1,5 +1,13 @@
 # Changes
 
+## 1.0.3
+
+- Establish one stable version for the free MCP, Skill, MCPB and Cursor plugin; retain earlier preview history.
+- Add a separate free Cursor plugin and an additive marketplace entry without changing the image plugin.
+- Pin all current installation examples to the same release and add an automated release-consistency check.
+- Runtime change is limited to the MCP reported version; tool behavior, authentication, limits, billing and dependencies are unchanged.
+- Registry publication, Cursor review and hosted deployment remain separately evidenced states.
+
 ## 0.1.0-preview.4
 
 - Add clickable official tool and documentation links to public Skill and package descriptions.

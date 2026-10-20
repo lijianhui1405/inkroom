@@ -1,0 +1,25 @@
+{
+  "product": "inkroom-prompts",
+  "version": "1.0.3",
+  "tag": "prompts-v1.0.3",
+  "artifacts": {
+    "npmArchive": "inkroom-prompts-1.0.3.tgz",
+    "skillArchive": "inkroom-prompts-skill-1.0.3.zip",
+    "mcpBundle": "inkroom-prompts-1.0.3.mcpb",
+    "cursorPlugin": {
+      "source": "prompts",
+      "version": "1.0.3"
+    }
+  },
+  "adapterPolicy": {
+    "version": "same product version",
+    "allowed": "Platform-only metadata or file-layout adapters; retain runtime/license bytes and record differences and SHA256.",
+    "branches": "codex/prompts-<version>-<platform>",
+    "pending": "Keep previous pending versions until a decision; do not resubmit duplicates."
+  },
+  "independentProducts": [
+    "paid inkroom image MCP",
+    "paid inkroom image Skill"
+  ],
+  "auth": "none"
+}

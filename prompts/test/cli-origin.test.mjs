@@ -29,7 +29,7 @@ function environment(origin) {
   return {PATH:process.env.PATH || '', ...(origin === undefined ? {} : {INKROOM_PROMPTS_ORIGIN:origin})};
 }
 async function assertTools(client, origin) {
-  assert.equal(client.getServerVersion().version, '0.1.0-preview.4');
+  assert.equal(client.getServerVersion().version, '1.0.3');
   const search = await client.callTool({name:'search_prompts', arguments:{query:'poster'}});
   assert.equal(search.isError, undefined);
   assert.equal(search.structuredContent.items[0].prompt, origin + '/api/prompts/assistant/search?query=poster&limit=3');

@@ -2,7 +2,7 @@
   "mcpServers": {
     "inkroom-prompts": {
       "command": "npx",
-      "args": ["-y", "--package", "https://github.com/InkRoom-AI/inkroom-client/releases/download/prompts-v0.1.0-preview.3/inkroom-prompts-0.1.0-preview.3.tgz", "inkroom-prompts"]
+      "args": ["-y", "--package", "https://github.com/InkRoom-AI/inkroom-client/releases/download/prompts-v1.0.3/inkroom-prompts-1.0.3.tgz", "inkroom-prompts"]
     }
   }
 }
