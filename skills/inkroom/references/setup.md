@@ -1,4 +1,4 @@
-# 支持 Agent Skills 的客户端 沙箱运行与授权
+# WorkBuddy 沙箱运行与授权
 
 本技能包不下载程序，不执行 `npm install`，只使用 Node.js 18+ 内置模块。
 
@@ -10,7 +10,7 @@
 node scripts/inkroom.mjs self-test
 ```
 
-自检验证运行时、JSON/SSE 解析、PNG 容器与压缩行、URL 限制和原子文件写入。它不联网、不读取 Key、不生成图片、不扣费。脚本无需下载外部程序。
+自检验证运行时、JSON/SSE 解析、PNG 容器与压缩行、URL 限制和原子文件写入。它不联网、不读取 Key、不生成图片、不扣点。脚本无需下载外部程序。
 
 ### 公开服务检查
 
@@ -22,15 +22,17 @@ node scripts/inkroom.mjs doctor
 
 ## 用户授权
 
-实际调用需要用户自己的 InkRoom Key。用户从 `https://inkroom.ai/skill-server` 复制 Key 后，通过标准输入交给脚本：
+`models`、`capabilities`、`tools` 以及 `call` 中的 `list_models` / `help` / 公开 `prompts`（action 缺省/search/get，scope 缺省/recommended）可无 Key 查询公开信息，不执行上游模型或消耗积分。`help`、`self-test` 是离线检查，`doctor` 只检查公开服务。公开销售价不等于个人可调用权限、最终预览报价或上游官方原价。
+
+私有数据、任务、预览和实际媒体操作需要用户自己的 InkRoom Key。用户从 `https://inkroom.ai/skill-server` 复制 Key 后，通过标准输入交给脚本：
 
 ```bash
 node scripts/inkroom.mjs authorize
 ```
 
-脚本从标准输入读取 Key，使用只读 `tools/list` 验证后保存到用户私有状态目录。通过宿主支持的安全凭据输入或已有的环境变量授权。若当前宿主没有安全凭据传递能力，向用户说明该步骤需手动完成，不索取普通对话里的明文 Key。不要把 Key 写进命令参数、技能文件、对话回复或共享输出。
+脚本从标准输入读取 Key，使用只读 `tools/list` 验证后保存到用户私有状态目录。不要把 Key 写进命令参数、技能文件、对话回复或共享输出。
 
-脚本兼容默认状态目录为 `~/.inkroom-workbuddy`；在支持 Agent Skills 的客户端中对所有命令设置 `INKROOM_STATE_DIR="$HOME/.inkroom"`（云端使用宿主允许的私有目录），隔离当前用户的授权状态。宿主如已安全注入 `INKROOM_MCP_TOKEN`，脚本优先使用该环境变量且不落盘。
+默认状态目录为 `~/.inkroom-workbuddy`；可用 `INKROOM_STATE_DIR` 指定沙箱允许的私有目录。宿主如已安全注入 `INKROOM_MCP_TOKEN`，脚本优先使用该环境变量且不落盘。
 
 ## 错误处理
 
