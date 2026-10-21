@@ -11,7 +11,7 @@ import { imageInfo, validateImage } from './image.mjs';
 import { saveMedia } from './delivery.mjs';
 import { resumeWorkflow, structured } from './workflow.mjs';
 
-const VERSION = '1.0.6';
+const VERSION = '1.0.8';
 const ORIGIN = 'https://inkroom.ai';
 const STATE_DIR = process.env.INKROOM_STATE_DIR || join(homedir(), '.inkroom-workbuddy');
 const TOKEN_FILE = join(STATE_DIR, 'mcp-token');
@@ -95,7 +95,7 @@ async function mcpRequest(endpoint, token, payload) {
   const { response, bytes } = await fetchBytes(endpoint, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${token}`,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
       'MCP-Protocol-Version': '2025-03-26',
@@ -201,6 +201,8 @@ async function recordedRequest(endpoint, token, payload, directory) {
   return { value: parseMcp(bytes), record: responsePath, requestPath };
 }
 function defaultDelivery(tool, input) {
+  // Preserve the requirements frozen by an existing preview.
+  if (tool !== 'wait_images' && ('requestId' in input || 'batchId' in input)) return;
   if (['generate_image', 'derive_image', 'upscale_image', 'batch_generate', 'wait_images'].includes(tool) && input.deliveryMode === undefined) input.deliveryMode = 'links';
 }
 async function reviewFailedMedia(media, endpoint, token, directory) {
@@ -227,26 +229,41 @@ async function reviewFailedMedia(media, endpoint, token, directory) {
 }
 async function executeMcp(command, args) {
   const token = await readToken();
-  if (!token) fail('authorization_required', 'Sign in to InkRoom and authorize your own Key through standard input');
-  const endpoint = await discover();
-  const directory = resolve(args.output || 'inkroom-output');
-  await mkdir(directory, { recursive: true, mode: 0o700 });
   let payload = { jsonrpc: '2.0', id: randomUUID(), method: 'tools/list' };
-  if (command === 'call') {
+  if (command === 'models' || command === 'capabilities') {
+    payload = { jsonrpc: '2.0', id: randomUUID(), method: 'tools/call', params: {
+      name: command === 'models' ? 'list_models' : 'help', arguments: command === 'capabilities' ? { topic: args.topic || 'quickstart' } : {},
+    } };
+  } else if (command === 'call') {
     if (!args.tool || !args.arguments) fail('invalid_arguments', 'call requires --tool and --arguments');
     const input = JSON.parse(await readFile(resolve(args.arguments), 'utf8'));
     if (!input || Array.isArray(input) || typeof input !== 'object') fail('invalid_arguments', 'Arguments file must contain a JSON object');
     defaultDelivery(args.tool, input);
     payload = { jsonrpc: '2.0', id: randomUUID(), method: 'tools/call', params: { name: args.tool, arguments: input } };
   }
+  const publicRead = publicSkillPayload(payload);
+  if (!token && !publicRead) fail('authorization_required', 'Sign in to InkRoom and authorize your own Key through standard input');
+  const endpoint = await discover();
+  const directory = resolve(args.output || 'inkroom-output');
+  await mkdir(directory, { recursive: true, mode: 0o700 });
   const { value, record, requestPath } = await recordedRequest(endpoint, token, payload, directory);
-  const media = await saveMedia(value, directory);
-  await reviewFailedMedia(media, endpoint, token, directory);
+  const media = publicRead ? [] : await saveMedia(value, directory);
+  if (!publicRead) await reviewFailedMedia(media, endpoint, token, directory);
   const manifestPath = `${record}.manifest.json`;
   await atomicWrite(manifestPath, JSON.stringify(media, null, 2));
   const ok = !value.error && !value.result?.isError && !media.some((item) => item.source === 'original_link' && !item.saved);
   output({ ok, requestPath, responsePath: record, manifestPath, summary: compact(value), media,
     allOriginalsSaved: false, generationAutomaticallyRetried: false }, ok ? 0 : 1);
+}
+
+function publicSkillPayload(payload) {
+  if (payload.method === 'tools/list') return true;
+  if (payload.method !== 'tools/call') return false;
+  if (['list_models', 'help'].includes(payload.params?.name)) return true;
+  const input = payload.params?.arguments;
+  return payload.params?.name === 'prompts' && input &&
+    (input.action === undefined || ['search', 'get'].includes(input.action)) &&
+    (input.scope === undefined || input.scope === 'recommended');
 }
 async function loadResponse(args) {
   if (!args.response) fail('invalid_arguments', 'recover/resume requires --response');
@@ -292,11 +309,11 @@ async function main() {
   const [command = 'help', ...rest] = process.argv.slice(2);
   const args = argsOf(rest);
   if (command === 'help' || command === '--help') {
-    output({ name: 'InkRoom 图片创作', version: VERSION, commands: ['self-test', 'doctor', 'authorize', 'tools', 'call', 'recover', 'resume'], dependencies: 'Node.js built-ins only' });
+    output({ name: 'InkRoom 图片创作', version: VERSION, commands: ['self-test', 'doctor', 'models', 'capabilities', 'authorize', 'tools', 'call', 'recover', 'resume'], publicCommands: ['self-test', 'doctor', 'models', 'capabilities', 'tools'], dependencies: 'Node.js built-ins only' });
   } else if (command === 'self-test') await commandSelfTest();
   else if (command === 'doctor') await commandDoctor();
   else if (command === 'authorize') await commandAuthorize();
-  else if (command === 'tools' || command === 'call') await executeMcp(command, args);
+  else if (['tools', 'models', 'capabilities', 'call'].includes(command)) await executeMcp(command, args);
   else if (command === 'recover') await commandRecover(args);
   else if (command === 'resume') await commandResume(args);
   else fail('unknown_command', `Unknown command: ${command}`);

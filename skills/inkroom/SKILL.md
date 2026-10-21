@@ -1,6 +1,6 @@
 ---
 name: inkroom
-description: Generate, edit and upscale images with InkRoom. Use for posters, product photos, reference-image edits, model comparisons and batch generation with cost previews and original-image recovery. Requires the user’s own InkRoom account and MCP Token. 支持图片创作、改图、放大与原任务恢复。
+description: Generate, edit and upscale images with InkRoom. Use for posters, product photos, reference-image edits, model comparisons and batch generation with cost previews and original-image recovery. Query public models, sales prices and capabilities without a Token; media generation requires the user’s own InkRoom account and MCP Token. 支持图片创作、改图、放大与原任务恢复。
 metadata:
   version: "1.0.8"
   author: InkRoom
@@ -32,6 +32,8 @@ node scripts/inkroom.mjs self-test
 node scripts/inkroom.mjs doctor
 ```
 
+公开模型与能力可直接运行 `node scripts/inkroom.mjs models` 和 `node scripts/inkroom.mjs capabilities`，无需 Key、Token 或端点配置，不执行模型、不生成图片、不扣积分。`tools` 无 Key 时只发现公开工具；`call` 仅允许 `list_models`、`help` 和公开库 `prompts`（action 缺省/search/get，scope 缺省/recommended）匿名读取。账户、账单、任务、私有提示词、费用预览、生成、处理、反推和回执读取仍须原授权。已有 Key 被拒绝时不丢弃它重试匿名。公开销售价不是上游官方原价或个人最终报价。
+
 授权方式和常见错误见 [账号授权](references/setup.md)；完整命令示例见 [调用示例](references/examples.md)。
 
 使用支持 Agent Skills 的客户端提供的终端能力运行命令；原图保存后使用宿主支持的图片展示方式呈现。Node 不可用时明确说明当前环境不满足条件，不下载替代程序或虚报执行成功。
@@ -60,7 +62,7 @@ node scripts/inkroom.mjs resume --response RESPONSE_FILE --output inkroom-output
 ## 交付与恢复
 
 - 核对请求数量、任务状态、实际结算，以及每张原图的 `resultId/inputIndex/imageIndex`、本地路径、SHA-256、格式、字节数和尺寸。索引从 0 开始；同哈希不同结果保留独立清单记录，不把物理文件数当作结果数。
-- 脚本先原子保存请求、完整原始响应和媒体清单，再返回简短摘要。未显式指定时使用 `deliveryMode=links`；用户明确选择的模式保持不变。
+- 脚本先原子保存请求、完整原始响应和媒体清单，再返回简短摘要。新预览和 `wait_images` 未显式指定时使用 `deliveryMode=links`；执行已有 `requestId/batchId` 时保留原预览，不重新补写交付模式；用户明确选择的模式保持不变。
 - 返回 `nextAction` 时原样使用其中的工具名、回执和参数继续同一任务。
 - 输出截断、链接过期、下载失败或客户端退出时，使用原回执调用 `wait_images`，不要重新付费生成。
 - 已保存响应可重新下载其中原图或还原内嵌预览：
