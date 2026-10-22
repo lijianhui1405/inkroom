@@ -16,7 +16,7 @@
 
 **Transports:** STDIO; loopback Streamable HTTP. Node.js 20.3+.
 
-**Skill entry:** `prompts/skills/inkroom-prompts/SKILL.md` in both public repositories. Import the whole folder, including `scripts/` and `LICENSE`.
+**Skill entry:** Use only the [official InkRoom repository entry](https://github.com/InkRoom-AI/inkroom-client/tree/main/prompts/skills/inkroom-prompts). Import that complete official folder, including `scripts/` and `LICENSE`; the personal repository is retained for historical compatibility, not new installations.
 
 **Data and limits:** See `PRIVACY.md` and the README. Optimization is an internal call using an InkRoom-managed text model (default `gpt-6.1-sol`), shared request-count limits and actual reported internal usage, never an end-user key. It does not require retail pricing or deduct user credits. This does not claim the supplier is free.
 
