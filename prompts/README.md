@@ -1,5 +1,9 @@
 # InkRoom Prompts
 
+> **迁移提示 / Migration notice:** 下列 1.0.3 文档与安装示例保留作历史记录。新安装请使用 [官方维护文档](https://github.com/InkRoom-AI/inkroom-client/tree/main/prompts) 与 [官方 Skill](https://github.com/InkRoom-AI/inkroom-client/tree/main/skills/inkroom-prompts)。本变更不升级或重新发行旧包。
+>
+> These legacy 1.0.3 instructions are historical. Use the official maintained documentation and Skill linked above for new installations. No old package is upgraded or reissued by this notice.
+
 [Official prompt tools / 官方提示词工具](https://inkroom.ai/tools/prompts) · [Usage / 使用文档](https://inkroom.ai/tools/prompts/docs)
 
 **Image prompt inspiration, without an account or API key.**
@@ -28,7 +32,7 @@ npm ci --ignore-scripts
 node src/cli.mjs --help
 ```
 
-Alternatively clone `https://github.com/lijianhui1405/inkroom.git` and open its `prompts` directory. No `.env` or credentials are needed.
+For new installations, use only the official repository `https://github.com/InkRoom-AI/inkroom-client.git` and open its `prompts` directory. No `.env` or credentials are needed.
 
 After downloading the GitHub release package, use this portable STDIO configuration in clients that support `mcpServers`:
 

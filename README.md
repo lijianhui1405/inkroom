@@ -1,5 +1,11 @@
 # InkRoom
 
+> **已迁移 / Moved:** 新安装与维护请使用 [InkRoom 官方品牌仓](https://github.com/InkRoom-AI/inkroom-client)。原 Node 图片 Skill 使用 [对应 Node 子目录](https://github.com/InkRoom-AI/inkroom-client/tree/main/skills/inkroom)；免费提示词 Skill 使用 [对应 prompts 子目录](https://github.com/InkRoom-AI/inkroom-client/tree/main/skills/inkroom-prompts)。下文保留作历史兼容记录，不再作为本仓 main 的新安装或新发行说明。原脚本、历史 tag/Release 与已有用户状态不变。
+>
+> New installations and maintained sources are in the official repository linked above. The Node image Skill and free prompt Skill remain separate products. Material below is historical; this legacy main branch is no longer a new-installation or new-release source. Existing scripts, tags/releases and user state are preserved.
+
+## 历史兼容记录 / Historical compatibility material
+
 ## Keyless prompt assistant (preview)
 
 [InkRoom Prompts MCP + Skill](prompts/) searches public prompts with real example images and offers capped text optimization. No login or Key. MIT applies only to the new `prompts/` and `skills/inkroom-prompts/` directories. Use the [official prompt tools](https://inkroom.ai/tools/prompts) and [documentation](https://inkroom.ai/tools/prompts/docs); existing paid image services keep their authorization.

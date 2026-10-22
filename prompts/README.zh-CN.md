@@ -1,5 +1,9 @@
 # InkRoom 提示词助手
 
+> **迁移提示 / Migration notice:** 下列 1.0.3 文档与安装示例保留作历史记录。新安装请使用 [官方维护文档](https://github.com/InkRoom-AI/inkroom-client/tree/main/prompts) 与 [官方 Skill](https://github.com/InkRoom-AI/inkroom-client/tree/main/skills/inkroom-prompts)。本变更不升级或重新发行旧包。
+>
+> These legacy 1.0.3 instructions are historical. Use the official maintained documentation and Skill linked above for new installations. No old package is upgraded or reissued by this notice.
+
 [官方提示词工具](https://inkroom.ai/tools/prompts) · [使用与MCP文档](https://inkroom.ai/tools/prompts/docs)
 
 **输入几个关键词，找到提示词和真实示例图。免登录、免 Key。**
@@ -29,7 +33,7 @@ npm ci --ignore-scripts
 node src/cli.mjs --help
 ```
 
-也可使用原公开仓库 `https://github.com/lijianhui1405/inkroom.git` 下相同的 `prompts` 目录。无需填写任何密钥或准备 `.env`。
+新安装仅使用官方品牌仓库 `https://github.com/InkRoom-AI/inkroom-client.git` 下的 `prompts` 目录。无需填写任何密钥或准备 `.env`。
 
 支持 `mcpServers` 配置的客户端，可使用正式包：
 
